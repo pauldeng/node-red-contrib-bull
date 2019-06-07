@@ -3,10 +3,10 @@
 	"version": "0.1.8",
 	"description": "A powerful job queue nodes for Node-RED",
 	"dependencies": {
-		"is-utf8": ">=0.2.1",
-		"request" : ">=2.72.0",
-		"bull" : ">=1.0.0-rc3",
-		"q": ">=1.4.1"
+		"is-utf8": "^0.2.1",
+		"request" : "^2.88.0",
+		"bull" : "^3.10.0",
+		"q": "^1.5.1"
 	},
 	"license": "MIT",
 	"keywords": ["node-red", "job", "queue"],
