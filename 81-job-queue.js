@@ -136,10 +136,14 @@ module.exports = function(RED) {
 					switch (parseInt(node.cmd)) {
 					case 0:
 						node.log(RED._("queue.add()", node.cmd));
-						queue.add(msg, {
+						let options = {
 							name : node.name,
 							topic : node.topic
-						});
+						};
+						if (msg.HasOwnProperty("cron")){
+							options.cron = msg.cron;
+						}
+						queue.add(msg, options);
 						break;
 					case 1:
 						node.log(RED._("queue.pause()", node.cmd));
