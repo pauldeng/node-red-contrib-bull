@@ -65,17 +65,14 @@ module.exports = function(RED) {
 			return deferred.promise;
 		};
 
-		this.on('close', function(closecomplete) {
-			if (this.connected) {
-				this.on('disconnected', function() {
-					closecomplete();
-				});
-				node.queue.close().then(function() {
-					node.log(RED._('closed'));
-				});
+		this.on('close', function(removed, closecomplete) {
+			if (removed){
+				// This node has been deleted
 			} else {
-				closecomplete();
+				// This node is being restarted
 			}
+			node.log(RED._('closed'));
+			closecomplete()
 		});
 	}
 
