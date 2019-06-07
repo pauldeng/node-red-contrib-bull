@@ -1,6 +1,6 @@
 {
 	"name": "node-red-contrib-job-queue",
-	"version": "0.1.8",
+	"version": "0.1.9",
 	"description": "A powerful job queue nodes for Node-RED",
 	"dependencies": {
 		"is-utf8": "^0.2.1",
@@ -9,7 +9,7 @@
 		"q": "^1.5.1"
 	},
 	"license": "MIT",
-	"keywords": ["node-red", "job", "queue"],
+	"keywords": ["node-red", "job", "queue", "bull"],
 	"node-red": {
 		"nodes": {
 			"job-queue": "81-job-queue.js"
@@ -17,8 +17,11 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/cuongquay/node-red-contrib-job-queue"
+		"url": "https://github.com/pauldeng/node-red-contrib-job-queue"
 	},
+	"contributors": [
+		  "Paul Deng <dengpeng.cn@gmail.com> (https://dengpeng.de)"
+	],
 	"author": {
 		"name": "DUONG Dinh Cuong",
 		"email": "cuong3ihut@gmail.com"
