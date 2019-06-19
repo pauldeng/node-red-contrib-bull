@@ -17,7 +17,7 @@
 	],
 	"node-red": {
 		"nodes": {
-			"job-queue": "81-job-queue.js"
+			"bull-queue": "bull-queue.js"
 		}
 	},
 	"repository": {

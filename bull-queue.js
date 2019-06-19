@@ -111,7 +111,6 @@ module.exports = function(RED) {
 		this.queue = n.queue;
 		this.cmd = n.cmd;
 		this.Queue = RED.nodes.getNode(this.queue);
-		this.topic = n.topic;
 		if (node.Queue) {
 			node.Queue.register();
 			node.Queue.connect().then(function(queue) {
@@ -135,15 +134,8 @@ module.exports = function(RED) {
 				node.Queue.connect().then(function(queue) {
 					switch (parseInt(node.cmd)) {
 					case 0:
-						node.log(RED._("queue.add()", node.cmd));
-						let options = {
-							name : node.name,
-							topic : node.topic
-						};
-						if (msg.HasOwnProperty("cron")){
-							options.cron = msg.cron;
-						}
-						queue.add(msg, options);
+						node.log(RED._("queue.add()" + msg.payload));
+						queue.add({foo: "bar"});
 						break;
 					case 1:
 						node.log(RED._("queue.pause()", node.cmd));
@@ -178,7 +170,6 @@ module.exports = function(RED) {
 		this.name = n.name;
 		this.func = n.func;
 		this.queue = n.queue;
-		this.topic = n.topic;
 		this.timeout = n.timeout;
 		this.Queue = RED.nodes.getNode(this.queue);
 		var functionText = "var results = null;" + "results = (function(msg){ " + "var __msgid__ = msg._msgid;" + "var node = {" + "log:__node__.log," + "error:__node__.error," + "warn:__node__.warn," + "on:__node__.on," + "status:__node__.status," + "send:function(msgs){ __node__.send(__msgid__,msgs);}" + "};\n" + this.func + "\n" + "})(msg);";
