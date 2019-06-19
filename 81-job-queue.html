@@ -156,7 +156,7 @@ limitations under the License.
 
 <script type="text/javascript">
 	RED.nodes.registerType('bull run', {
-		color : "#A6BBCF",
+		color : "#ffffff",
 		category : 'function',
 		defaults : {
 			name : {
@@ -182,7 +182,7 @@ limitations under the License.
 		},
 		outputs : 1,
 		align: "left",
-		icon : "debug.png",
+		icon : "bull_icon.png",
 		label : function() {
 			return this.name || "bull run";
 		},
@@ -281,7 +281,7 @@ limitations under the License.
 
 <script type="text/javascript">
 	RED.nodes.registerType('bull cmd', {
-		color : "#A6BBCF",
+		color : "#ffffff",
 		category : 'function',
 		defaults : {
 			name : {
@@ -301,8 +301,9 @@ limitations under the License.
 			}
 		},
 		inputs : 1,
+		outputs:1,
 		align: "right",
-		icon : "debug.png",
+		icon : "bull_icon.png",
 		label : function() {
 			return this.name || "bull cmd";
 		}
