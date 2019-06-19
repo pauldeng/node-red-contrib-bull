@@ -117,7 +117,7 @@ module.exports = function(RED) {
 			node.Queue.connect().then(function(queue) {
 				node.status({
 					fill : "green",
-					shape : "ring",
+					shape : "dot",
 					text : "connected"
 				});
 			}, function(error) {
@@ -268,7 +268,7 @@ module.exports = function(RED) {
 				});
 				node.status({
 					fill : "green",
-					shape : "ring",
+					shape : "dot",
 					text : "connected"
 				});
 			}, function(error) {
