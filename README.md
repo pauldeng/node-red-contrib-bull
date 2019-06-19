@@ -1,5 +1,7 @@
 # node-red-contrib-job-queue
 
+Work in progress, please do not use
+
 A pair of queue nodes where you can write code to run in the background as a queued job which is used OptimalBits/bull library as the core of job management.
 
 [![npm version](https://badge.fury.io/js/node-red-contrib-job-queue.svg)](https://badge.fury.io/js/node-red-contrib-job-queue)
