@@ -284,7 +284,7 @@ module.exports = function(RED) {
 	}
 
 
-	RED.nodes.registerType("queue cmd", QueueCmdNode);
-	RED.nodes.registerType("queue run", QueueRunNode);
+	RED.nodes.registerType("bull cmd", QueueCmdNode);
+	RED.nodes.registerType("bull run", QueueRunNode);
 	RED.library.register("functions");
 };
