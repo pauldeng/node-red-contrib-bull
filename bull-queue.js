@@ -23,7 +23,7 @@ module.exports = function(RED) {
 	var request = require('request');
 	var Queue = require("bull");
 
-	function QueueServerSetup(config) {
+	function BullQueueServerSetup(config) {
 		RED.nodes.createNode(this, config);
 
 		this.connected = false;
@@ -78,7 +78,7 @@ module.exports = function(RED) {
 	}
 
 
-	RED.nodes.registerType("bull-queue-server", QueueServerSetup);
+	RED.nodes.registerType("bull-queue-server", BullQueueServerSetup);
 
 	function BullQueueCmdNode(config) {
 		RED.nodes.createNode(this, config);
