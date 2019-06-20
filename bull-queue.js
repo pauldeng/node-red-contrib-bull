@@ -80,7 +80,7 @@ module.exports = function(RED) {
 
 	RED.nodes.registerType("bull-queue-server", QueueServerSetup);
 
-	function QueueCmdNode(config) {
+	function BullQueueCmdNode(config) {
 		RED.nodes.createNode(this, config);
 		var node = this;
 		this.name = config.name;
@@ -156,7 +156,7 @@ module.exports = function(RED) {
 		});
 	}
 
-	function QueueRunNode(config) {
+	function BullQueueRunNode(config) {
 		RED.nodes.createNode(this, config);
 		var node = this;
 		this.name = config.name;
@@ -200,6 +200,6 @@ module.exports = function(RED) {
 	}
 
 
-	RED.nodes.registerType("bull cmd", QueueCmdNode);
-	RED.nodes.registerType("bull run", QueueRunNode);
+	RED.nodes.registerType("bull cmd", BullQueueCmdNode);
+	RED.nodes.registerType("bull run", BullQueueRunNode);
 };
