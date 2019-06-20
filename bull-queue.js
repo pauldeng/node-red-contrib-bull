@@ -79,31 +79,6 @@ module.exports = function(RED) {
 
 	RED.nodes.registerType("queue-server", QueueServerSetup);
 
-	function sendResults(node, _msgid, msgs) {
-		if (msgs == null) {
-			return;
-		} else if (!util.isArray(msgs)) {
-			msgs = [msgs];
-		}
-		var msgCount = 0;
-		for (var m = 0; m < msgs.length; m++) {
-			if (msgs[m]) {
-				if (util.isArray(msgs[m])) {
-					for (var n = 0; n < msgs[m].length; n++) {
-						msgs[m][n]._msgid = _msgid;
-						msgCount++;
-					}
-				} else {
-					msgs[m]._msgid = _msgid;
-					msgCount++;
-				}
-			}
-		}
-		if (msgCount > 0) {
-			node.send(msgs);
-		}
-	};
-
 	function QueueCmdNode(n) {
 		RED.nodes.createNode(this, n);
 		var node = this;
