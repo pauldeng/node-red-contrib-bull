@@ -181,6 +181,11 @@ module.exports = function(RED) {
 		if (node.Queue) {
 			node.Queue.register();
 			node.Queue.connect().then(function(queue) {
+				node.status({
+					fill : "green",
+					shape : "dot",
+					text : "connected"
+				});
 				queue.process(async (job, done) => {
 					node.log(JSON.stringify(job));
 					node.send(job.data);
