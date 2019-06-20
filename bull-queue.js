@@ -178,99 +178,13 @@ module.exports = function(RED) {
 		this.queue = n.queue;
 		this.timeout = n.timeout;
 		this.Queue = RED.nodes.getNode(this.queue);
-		var functionText = "var results = null;" + "results = (function(msg){ " + "var __msgid__ = msg._msgid;" + "var node = {" + "log:__node__.log," + "error:__node__.error," + "warn:__node__.warn," + "on:__node__.on," + "status:__node__.status," + "send:function(msgs){ __node__.send(__msgid__,msgs);}" + "};\n" + this.func + "\n" + "})(msg);";
-		var sandbox = {			
-			console : console,
-			util : util,
-			Buffer : Buffer,
-			__node__ : {
-				log : function() {
-					node.log.apply(node, arguments);
-				},
-				error : function() {
-					node.error.apply(node, arguments);
-				},
-				warn : function() {
-					node.warn.apply(node, arguments);
-				},
-				send : function(id, msgs) {
-					sendResults(node, id, msgs);
-				},
-				on : function() {
-					node.on.apply(node, arguments);
-				},
-				status : function() {
-					node.status.apply(node, arguments);
-				}
-			},
-			context : {
-				global : RED.settings.functionGlobalContext || {}
-			},
-			setTimeout : setTimeout,
-			clearTimeout : clearTimeout
-		};
-		var context = vm.createContext(sandbox);
 		if (node.Queue) {
 			node.Queue.register();
-			node.script = vm.createScript(functionText);
 			node.Queue.connect().then(function(queue) {
 				queue.process(async (job, done) => {
 					node.log(JSON.stringify(job));
-
-					try {
-						var start = process.hrtime();
-						context.msg = job.data;
-						context.job = job;
-						context.done = function(error, results) {
-							sendResults(node, node.name, results);
-							error = error || null;
-							completed(error, results);
-						};
-						context.request = request;
-						context.child_process = child_process;
-						node.script.runInContext(context);
-						sendResults(node, node.name, context.results);
-						var duration = process.hrtime(start);
-						var converted = Math.floor((duration[0] * 1e9 + duration[1]) / 10000) / 100;
-						node.metric("duration", node.name, converted);
-						if (process.env.NODE_RED_FUNCTION_TIME) {
-							node.status({
-								fill : "yellow",
-								shape : "dot",
-								text : "" + converted
-							});
-						}
-					} catch(err) {
-						var line = 0;
-						var errorMessage;
-						var stack = err.stack.split(/\r?\n/);
-						if (stack.length > 0) {
-							while (line < stack.length && stack[line].indexOf("ReferenceError") !== 0) {
-								line++;
-							}
-							if (line < stack.length) {
-								errorMessage = stack[line];
-								var m = /:(\d+):(\d+)$/.exec(stack[line + 1]);
-								if (m) {
-									var lineno = Number(m[1]) - 1;
-									var cha = m[2];
-									errorMessage += " (line " + lineno + ", col " + cha + ")";
-								}
-							}
-						}
-						if (!errorMessage) {
-							errorMessage = err.toString();
-						}
-						node.error(errorMessage, node.name);
-					}
-
-					//node.send(job.data);
+					node.send(job.data);
 					done();
-				});
-				node.status({
-					fill : "green",
-					shape : "dot",
-					text : "connected"
 				});
 			}, function(error) {
 				node.status({

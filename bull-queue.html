@@ -85,19 +85,10 @@ limitations under the License.
 		<label for="node-input-queue"><i class="fa fa-globe"></i> <span>Queue</span></label>
 		<input type="text" id="node-input-queue" placeholder="Enter queue name">
 	</div>
-	<div class="form-row" style="margin-bottom: 0px;">
-		<label for="node-input-func"><i class="fa fa-wrench"></i> <span>Function</span></label>
-		<input type="hidden" id="node-input-func" autofocus="autofocus">
-		<input type="hidden" id="node-input-noerr">
-	</div>
-	<div class="form-row node-text-editor-row">
-		<div style="height: 250px;" class="node-text-editor" id="node-input-func-editor" ></div>
-	</div>
 	<div class="form-row">
 		<label for="node-input-outputs"><i class="fa fa-random"></i> <span>Outputs</span></label>
 		<input id="node-input-outputs" style="width: 60px; height: 1.7em;" value="1">
 	</div>
-	<div class="form-tips"><span>See the Info tab for help writing functions.</span></div>
 </script>
 
 <script type="text/x-red" data-help-name="bull run">
@@ -204,21 +195,6 @@ limitations under the License.
 				var height = $("#dialog").dialog('option', 'height');
 				$("#dialog").off("dialogresize", functionDialogResize);
 			});
-
-			this.editor = RED.editor.createEditor({
-				id : 'node-input-func-editor',
-				mode : 'ace/mode/javascript',
-				value : $("#node-input-func").val()
-			});
-
-			RED.library.create({
-				url : "functions", // where to get the data from
-				type : "function", // the type of object the library is for
-				editor : this.editor, // the field name the main text body goes to
-				mode : "ace/mode/javascript",
-				fields : ['name', 'outputs']
-			});
-			this.editor.focus();
 		},
 		oneditsave : function() {
 			var annot = this.editor.getSession().getAnnotations();
