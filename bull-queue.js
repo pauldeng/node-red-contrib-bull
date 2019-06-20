@@ -134,8 +134,14 @@ module.exports = function(RED) {
 				node.Queue.connect().then(function(queue) {
 					switch (parseInt(node.cmd)) {
 					case 0:
-						node.log(RED._("queue.add()" + msg.payload));
-						queue.add({foo: "bar"});
+						node.log("queue.add({payload:" + msg.payload + "}, " + JSON.stringify(msg.jobopts) + ")");
+						async function add(msg){
+							return await queue.add(
+								{payload: msg.payload},
+								msg.jobopts);
+						}
+						msg.result = add(msg);
+						node.send(msg);
 						break;
 					case 1:
 						node.log(RED._("queue.pause()", node.cmd));
@@ -208,6 +214,11 @@ module.exports = function(RED) {
 			node.Queue.register();
 			node.script = vm.createScript(functionText);
 			node.Queue.connect().then(function(queue) {
+				queue.process(async (job, done) => {
+					node.log(JSON.stringify(job));
+					done();
+				})
+				/*
 				queue.process(function(job, completed) {
 					node.log(RED._("queue.run()", job));
 					try {
@@ -257,6 +268,7 @@ module.exports = function(RED) {
 						node.error(errorMessage, node.name);
 					}
 				});
+				*/
 				node.status({
 					fill : "green",
 					shape : "dot",
