@@ -23,16 +23,16 @@ module.exports = function(RED) {
 	var request = require('request');
 	var Queue = require("bull");
 
-	function QueueServerSetup(n) {
-		RED.nodes.createNode(this, n);
+	function QueueServerSetup(config) {
+		RED.nodes.createNode(this, config);
 
 		this.connected = false;
 		this.connecting = false;
 		this.usecount = 0;
 		// Config node state
-		this.name = n.name;
-		this.address = n.address;
-		this.port = n.port;
+		this.name = config.name;
+		this.address = config.address;
+		this.port = config.port;
 
 		var node = this;
 		this.register = function() {
@@ -79,12 +79,12 @@ module.exports = function(RED) {
 
 	RED.nodes.registerType("queue-server", QueueServerSetup);
 
-	function QueueCmdNode(n) {
-		RED.nodes.createNode(this, n);
+	function QueueCmdNode(config) {
+		RED.nodes.createNode(this, config);
 		var node = this;
-		this.name = n.name;
-		this.queue = n.queue;
-		this.cmd = n.cmd;
+		this.name = config.name;
+		this.queue = config.queue;
+		this.cmd = config.cmd;
 		this.Queue = RED.nodes.getNode(this.queue);
 		if (node.Queue) {
 			node.Queue.register();
@@ -145,13 +145,13 @@ module.exports = function(RED) {
 		}
 	}
 
-	function QueueRunNode(n) {
-		RED.nodes.createNode(this, n);
+	function QueueRunNode(config) {
+		RED.nodes.createNode(this, config);
 		var node = this;
-		this.name = n.name;
-		this.func = n.func;
-		this.queue = n.queue;
-		this.timeout = n.timeout;
+		this.name = config.name;
+		this.func = config.func;
+		this.queue = config.queue;
+		this.timeout = config.timeout;
 		this.Queue = RED.nodes.getNode(this.queue);
 		if (node.Queue) {
 			node.Queue.register();
