@@ -17,10 +17,6 @@
 module.exports = function(RED) {
 	"use strict";
 	var q = require('q');
-	var util = require("util");
-	var vm = require("vm");
-	var child_process = require('child_process');
-	var request = require('request');
 	var Queue = require("bull");
 
 	function BullQueueServerSetup(config) {
@@ -72,6 +68,8 @@ module.exports = function(RED) {
 				// This node is being restarted
 			}
 			node.Queue.close();
+			node.connecting = false;
+			node.connected = false;
 			node.log("closed");
 			closecomplete()
 		});
@@ -159,10 +157,7 @@ module.exports = function(RED) {
 	function BullQueueRunNode(config) {
 		RED.nodes.createNode(this, config);
 		var node = this;
-		this.name = config.name;
-		this.func = config.func;
 		this.queue = config.queue;
-		this.timeout = config.timeout;
 		this.Queue = RED.nodes.getNode(this.queue);
 		if (node.Queue) {
 			node.Queue.register();
