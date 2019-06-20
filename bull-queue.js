@@ -71,6 +71,7 @@ module.exports = function(RED) {
 			} else {
 				// This node is being restarted
 			}
+			node.Queue.close();
 			node.log("closed");
 			closecomplete()
 		});
@@ -142,7 +143,17 @@ module.exports = function(RED) {
 			// eg SyntaxError - which v8 doesn't include line number information
 			// so we can't do better than this
 			this.error(err);
-		}
+		};
+
+		this.on('close', function(removed, done) {
+			if (removed) {
+				// This node has been deleted
+			} else {
+				// This node is being restarted
+			}
+			node.Queue.close();
+			done();
+		});
 	}
 
 	function QueueRunNode(config) {
@@ -161,10 +172,10 @@ module.exports = function(RED) {
 					shape : "dot",
 					text : "connected"
 				});
-				queue.process(async (job, done) => {
+				queue.process(function(job, completed) {
 					node.log(JSON.stringify(job));
 					node.send(job.data);
-					done();
+					completed();
 				});
 			}, function(error) {
 				node.status({
@@ -175,7 +186,17 @@ module.exports = function(RED) {
 			});
 		} else {
 			node.error("common.status.error");
-		}
+		};
+
+		this.on('close', function(removed, done) {
+			if (removed) {
+				// This node has been deleted
+			} else {
+				// This node is being restarted
+			}
+			node.Queue.close();
+			done();
+		});
 	}
 
 
