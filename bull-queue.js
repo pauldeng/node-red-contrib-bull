@@ -216,11 +216,7 @@ module.exports = function(RED) {
 			node.Queue.connect().then(function(queue) {
 				queue.process(async (job, done) => {
 					node.log(JSON.stringify(job));
-					done();
-				})
-				/*
-				queue.process(function(job, completed) {
-					node.log(RED._("queue.run()", job));
+
 					try {
 						var start = process.hrtime();
 						context.msg = job.data;
@@ -267,8 +263,10 @@ module.exports = function(RED) {
 						}
 						node.error(errorMessage, node.name);
 					}
+
+					//node.send(job.data);
+					done();
 				});
-				*/
 				node.status({
 					fill : "green",
 					shape : "dot",
