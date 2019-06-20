@@ -50,9 +50,9 @@ module.exports = function(RED) {
 			if (!node.connected && !node.connecting) {
 				node.connecting = true;
 				node.queue = Queue(node.name, node.port, node.address);
-				node.log(RED._("connected", {
+				node.log("connected", {
 					server : (node.address ? node.address + "@" : "") + node.port
-				}));
+				});
 				node.connecting = false;
 				node.connected = true;
 				node.emit('connected');
@@ -71,7 +71,7 @@ module.exports = function(RED) {
 			} else {
 				// This node is being restarted
 			}
-			node.log(RED._('closed'));
+			node.log("closed");
 			closecomplete()
 		});
 	}
@@ -102,7 +102,7 @@ module.exports = function(RED) {
 				});
 			});
 		} else {
-			node.error(RED._("common.status.error"));
+			node.error("common.status.error");
 		}
 		try {
 			this.on("input", function(msg) {
@@ -119,15 +119,15 @@ module.exports = function(RED) {
 						node.send(msg);
 						break;
 					case 1:
-						node.log(RED._("queue.pause()", node.cmd));
+						node.log("queue.pause()", node.cmd);
 						queue.pause();
 						break;
 					case 2:
-						node.log(RED._("queue.resume()", node.cmd));
+						node.log("queue.resume()", node.cmd);
 						queue.resume();
 						break;
 					default:
-						node.log(RED._("queue.default()", node.cmd));
+						node.log("queue.default()", node.cmd);
 						break;
 					}
 				}, function(error) {
@@ -174,7 +174,7 @@ module.exports = function(RED) {
 				});
 			});
 		} else {
-			node.error(RED._("common.status.error"));
+			node.error("common.status.error");
 		}
 	}
 
