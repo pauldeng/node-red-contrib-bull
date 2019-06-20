@@ -78,7 +78,7 @@ module.exports = function(RED) {
 	}
 
 
-	RED.nodes.registerType("queue-server", QueueServerSetup);
+	RED.nodes.registerType("bull-queue-server", QueueServerSetup);
 
 	function QueueCmdNode(config) {
 		RED.nodes.createNode(this, config);
