@@ -17,6 +17,7 @@
 module.exports = function(RED) {
   "use strict";
   var q = require("q");
+  var sprintf = require("sprintf-js").sprintf;
   var Queue = require("bull");
 
   function BullQueueServerSetup(config) {
@@ -46,9 +47,7 @@ module.exports = function(RED) {
       if (!node.connected && !node.connecting) {
         node.connecting = true;
         node.queue = Queue(node.name, node.port, node.address);
-        node.log("connected", {
-          server: (node.address ? node.address + "@" : "") + node.port
-        });
+        node.log(sprintf("connected to %s:%d", node.address, node.port));
         node.connecting = false;
         node.connected = true;
         node.emit("connected");

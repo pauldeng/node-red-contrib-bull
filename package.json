@@ -3,10 +3,11 @@
 	"version": "0.1.9",
 	"description": "A powerful job queue nodes for Node-RED",
 	"dependencies": {
-		"is-utf8": "^0.2.1",
-		"request": "^2.88.0",
 		"bull": "^3.10.0",
-		"q": "^1.5.1"
+		"is-utf8": "^0.2.1",
+		"q": "^1.5.1",
+		"request": "^2.88.0",
+		"sprintf-js": "^1.1.2"
 	},
 	"license": "MIT",
 	"keywords": [
