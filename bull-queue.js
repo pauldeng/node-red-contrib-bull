@@ -16,7 +16,7 @@
 
 module.exports = function(RED) {
   "use strict";
-  var q = require("q");
+
   var sprintf = require("sprintf-js").sprintf;
   var Queue = require("bull");
 
@@ -43,7 +43,6 @@ module.exports = function(RED) {
     };
 
     this.connect = function() {
-      var deferred = q.defer();
       if (!node.connected && !node.connecting) {
         node.connecting = true;
         node.queue = Queue(node.name, node.port, node.address);
@@ -51,13 +50,8 @@ module.exports = function(RED) {
         node.connecting = false;
         node.connected = true;
         node.emit("connected");
-        deferred.resolve(node.queue);
-      } else {
-        if (node.queue) {
-          deferred.resolve(node.queue);
-        }
       }
-      return deferred.promise;
+      return node.queue;
     };
 
     this.on("close", function(removed, closecomplete) {
@@ -85,6 +79,7 @@ module.exports = function(RED) {
     this.Queue = RED.nodes.getNode(this.queue);
     if (node.Queue) {
       node.Queue.register();
+/*
       node.Queue.connect().then(
         function(queue) {
           node.status({
@@ -101,11 +96,19 @@ module.exports = function(RED) {
           });
         }
       );
+*/
     } else {
       node.error("common.status.error");
     }
     try {
       this.on("input", function(msg) {
+        var bullqueue = node.Queue.connect();
+        async function add(msg) {
+          return await bullqueue.add({ payload: msg.payload }, msg.jobopts);
+        }
+        msg.result = add(msg);
+        node.send(msg);
+/*
         node.Queue.connect().then(
           function(queue) {
             switch (parseInt(node.cmd)) {
@@ -144,6 +147,7 @@ module.exports = function(RED) {
             });
           }
         );
+*/
       });
     } catch (err) {
       // eg SyntaxError - which v8 doesn't include line number information
@@ -169,6 +173,13 @@ module.exports = function(RED) {
     this.Queue = RED.nodes.getNode(this.queue);
     if (node.Queue) {
       node.Queue.register();
+      var bullqueue = node.Queue.connect();
+      bullqueue.process(function(job, completed) {
+        node.log(JSON.stringify(job));
+        node.send(job.data);
+        completed();
+      });
+/*
       node.Queue.connect().then(
         function(queue) {
           node.status({
@@ -190,6 +201,7 @@ module.exports = function(RED) {
           });
         }
       );
+*/
     } else {
       node.error("common.status.error");
     }
