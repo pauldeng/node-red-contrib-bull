@@ -79,7 +79,7 @@ module.exports = function(RED) {
     this.Queue = RED.nodes.getNode(this.queue);
     if (node.Queue) {
       node.Queue.register();
-/*
+      /*
       node.Queue.connect().then(
         function(queue) {
           node.status({
@@ -108,7 +108,7 @@ module.exports = function(RED) {
         }
         msg.result = add(msg);
         node.send(msg);
-/*
+        /*
         node.Queue.connect().then(
           function(queue) {
             switch (parseInt(node.cmd)) {
@@ -179,7 +179,7 @@ module.exports = function(RED) {
         node.send(job.data);
         completed();
       });
-/*
+      /*
       node.Queue.connect().then(
         function(queue) {
           node.status({
