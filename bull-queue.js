@@ -137,10 +137,9 @@ module.exports = function(RED) {
     try {
       this.on("input", function(msg) {
         var bullqueue = node.bullConn.connect();
-        async function add(msg) {
+        msg.result = (async function(msg) {
           return await bullqueue.add({ payload: msg.payload }, msg.jobopts);
-        }
-        msg.result = add(msg);
+        })(msg);
         node.send(msg);
         /*
         node.Queue.connect().then(
