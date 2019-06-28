@@ -68,6 +68,15 @@ module.exports = function(RED) {
           node.log(sprintf("connected to %s:%d", node.address, node.port));
           node.connecting = false;
           node.connected = true;
+          for (var id in node.users) {
+            if (node.users.hasOwnProperty(id)) {
+              node.users[id].status({
+                fill: "green",
+                shape: "dot",
+                text: "node-red:common.status.connected"
+              });
+            }
+          }
         } catch (err) {
           console.log(err);
         }
@@ -193,8 +202,20 @@ module.exports = function(RED) {
     this.queue = n.queue;
     this.bullQueue = RED.nodes.getNode(this.queue);
     if (this.bullQueue) {
+      this.status({
+        fill: "red",
+        shape: "ring",
+        text: "node-red:common.status.disconnected"
+      });
       this.bullQueue.register(node);
       var bullqueue = node.bullQueue.connect();
+      if (bullqueue) {
+        node.status({
+          fill: "green",
+          shape: "dot",
+          text: "node-red:common.status.connected"
+        });
+      }
       bullqueue.process(function(job, completed) {
         node.log(JSON.stringify(job));
         node.send(job.data);
