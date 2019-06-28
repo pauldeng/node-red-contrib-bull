@@ -23,15 +23,17 @@ module.exports = function(RED) {
   function BullQueueServerSetup(n) {
     RED.nodes.createNode(this, n);
 
-    this.connected = false;
-    this.connecting = false;
-    this.closing = false;
-
-    // Config node state
+    // Configuration options passed by Node Red
     this.name = n.name;
     this.address = n.address;
     this.port = n.port;
 
+    // Config node state
+    this.connected = false;
+    this.connecting = false;
+    this.closing = false;
+
+    // Define functions called by MQTT in and out nodes
     var node = this;
     this.users = {};
 
@@ -61,27 +63,33 @@ module.exports = function(RED) {
     this.connect = function() {
       if (!node.connected && !node.connecting) {
         node.connecting = true;
-        node.queue = Queue(node.name, node.port, node.address);
-        node.log(sprintf("connected to %s:%d", node.address, node.port));
-        node.connecting = false;
-        node.connected = true;
-        node.emit("connected");
+        try {
+          node.queue = Queue(node.name, node.port, node.address);
+          node.log(sprintf("connected to %s:%d", node.address, node.port));
+          node.connecting = false;
+          node.connected = true;
+        } catch (err) {
+          console.log(err);
+        }
       }
       return node.queue;
     };
 
-    this.on("close", function(removed, closecomplete) {
+    this.on("close", function(removed, done) {
+      console.log("closing");
       this.closing = true;
-      if (removed) {
-        // This node has been deleted
+      if (this.connected) {
+        this.queue.once("close", function() {
+          done();
+        });
+        this.queue.close();
+        done();
+      } else if (this.connecting || node.queue.reconnecting) {
+        node.queue.close();
+        done();
       } else {
-        // This node is being restarted
+        done();
       }
-      node.queue.close();
-      node.connecting = false;
-      node.connected = false;
-      node.log("closed");
-      closecomplete();
     });
   }
 
@@ -89,13 +97,13 @@ module.exports = function(RED) {
 
   function BullQueueCmdNode(n) {
     RED.nodes.createNode(this, n);
-    var node = this;
-    this.name = n.name;
     this.queue = n.queue;
-    this.cmd = n.cmd;
-    this.Queue = RED.nodes.getNode(this.queue);
-    if (node.Queue) {
-      node.Queue.register(node);
+    this.bullConn = RED.nodes.getNode(this.queue);
+
+    var node = this;
+
+    if (this.bullConn) {
+      this.bullConn.register(this);
       /*
       node.Queue.connect().then(
         function(queue) {
@@ -119,7 +127,7 @@ module.exports = function(RED) {
     }
     try {
       this.on("input", function(msg) {
-        var bullqueue = node.Queue.connect();
+        var bullqueue = node.bullConn.connect();
         async function add(msg) {
           return await bullqueue.add({ payload: msg.payload }, msg.jobopts);
         }
@@ -173,14 +181,9 @@ module.exports = function(RED) {
     }
 
     this.on("close", function(removed, done) {
-      this.closing = true;
-      if (removed) {
-        // This node has been deleted
-      } else {
-        // This node is being restarted
+      if (node.bullConn) {
+        node.brokerConn.deregister(node, done);
       }
-      node.queue.close();
-      done();
     });
   }
 
@@ -188,10 +191,10 @@ module.exports = function(RED) {
     RED.nodes.createNode(this, n);
     var node = this;
     this.queue = n.queue;
-    this.Queue = RED.nodes.getNode(this.queue);
-    if (node.Queue) {
-      node.Queue.register(node);
-      var bullqueue = node.Queue.connect();
+    this.bullQueue = RED.nodes.getNode(this.queue);
+    if (this.bullQueue) {
+      this.bullQueue.register(node);
+      var bullqueue = node.bullQueue.connect();
       bullqueue.process(function(job, completed) {
         node.log(JSON.stringify(job));
         node.send(job.data);
@@ -225,12 +228,9 @@ module.exports = function(RED) {
     }
 
     this.on("close", function(removed, done) {
-      if (removed) {
-        // This node has been deleted
-      } else {
-        // This node is being restarted
+      if (node.brokerConn) {
+        node.deregister(node, done);
       }
-      node.deregister(node, done);
       done();
     });
   }
