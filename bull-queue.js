@@ -25,21 +25,37 @@ module.exports = function(RED) {
 
     this.connected = false;
     this.connecting = false;
-    this.usecount = 0;
+    this.closing = false;
+
     // Config node state
     this.name = config.name;
     this.address = config.address;
     this.port = config.port;
 
     var node = this;
-    this.register = function() {
-      node.usecount += 1;
+    this.users = {};
+
+    this.register = function(bullNode) {
+      node.users[bullNode.id] = bullNode;
+      if (Object.keys(node.users).length === 1) {
+        node.connect();
+      }
     };
 
-    this.deregister = function() {
-      node.usecount -= 1;
-      if (node.usecount == 0) {
+    this.deregister = function(bullNode, done) {
+      delete node.users[bullNode.id];
+      if (node.closing) {
+        return done();
       }
+      if (Object.keys(node.users).length === 0) {
+        if (node.queue && node.connected) {
+          return node.queue.close(done);
+        } else {
+          node.queue.close();
+          return done();
+        }
+      }
+      done();
     };
 
     this.connect = function() {
@@ -55,12 +71,13 @@ module.exports = function(RED) {
     };
 
     this.on("close", function(removed, closecomplete) {
+      this.closing = true;
       if (removed) {
         // This node has been deleted
       } else {
         // This node is being restarted
       }
-      node.Queue.close();
+      node.queue.close();
       node.connecting = false;
       node.connected = false;
       node.log("closed");
@@ -78,7 +95,7 @@ module.exports = function(RED) {
     this.cmd = config.cmd;
     this.Queue = RED.nodes.getNode(this.queue);
     if (node.Queue) {
-      node.Queue.register();
+      node.Queue.register(node);
       /*
       node.Queue.connect().then(
         function(queue) {
@@ -156,12 +173,13 @@ module.exports = function(RED) {
     }
 
     this.on("close", function(removed, done) {
+      this.closing = true;
       if (removed) {
         // This node has been deleted
       } else {
         // This node is being restarted
       }
-      node.Queue.close();
+      node.queue.close();
       done();
     });
   }
@@ -172,7 +190,7 @@ module.exports = function(RED) {
     this.queue = config.queue;
     this.Queue = RED.nodes.getNode(this.queue);
     if (node.Queue) {
-      node.Queue.register();
+      node.Queue.register(node);
       var bullqueue = node.Queue.connect();
       bullqueue.process(function(job, completed) {
         node.log(JSON.stringify(job));
@@ -212,7 +230,7 @@ module.exports = function(RED) {
       } else {
         // This node is being restarted
       }
-      node.Queue.close();
+      node.deregister(node, done);
       done();
     });
   }
