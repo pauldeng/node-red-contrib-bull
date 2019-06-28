@@ -20,17 +20,17 @@ module.exports = function(RED) {
   var sprintf = require("sprintf-js").sprintf;
   var Queue = require("bull");
 
-  function BullQueueServerSetup(config) {
-    RED.nodes.createNode(this, config);
+  function BullQueueServerSetup(n) {
+    RED.nodes.createNode(this, n);
 
     this.connected = false;
     this.connecting = false;
     this.closing = false;
 
     // Config node state
-    this.name = config.name;
-    this.address = config.address;
-    this.port = config.port;
+    this.name = n.name;
+    this.address = n.address;
+    this.port = n.port;
 
     var node = this;
     this.users = {};
@@ -87,12 +87,12 @@ module.exports = function(RED) {
 
   RED.nodes.registerType("bull-queue-server", BullQueueServerSetup);
 
-  function BullQueueCmdNode(config) {
-    RED.nodes.createNode(this, config);
+  function BullQueueCmdNode(n) {
+    RED.nodes.createNode(this, n);
     var node = this;
-    this.name = config.name;
-    this.queue = config.queue;
-    this.cmd = config.cmd;
+    this.name = n.name;
+    this.queue = n.queue;
+    this.cmd = n.cmd;
     this.Queue = RED.nodes.getNode(this.queue);
     if (node.Queue) {
       node.Queue.register(node);
@@ -184,10 +184,10 @@ module.exports = function(RED) {
     });
   }
 
-  function BullQueueRunNode(config) {
-    RED.nodes.createNode(this, config);
+  function BullQueueRunNode(n) {
+    RED.nodes.createNode(this, n);
     var node = this;
-    this.queue = config.queue;
+    this.queue = n.queue;
     this.Queue = RED.nodes.getNode(this.queue);
     if (node.Queue) {
       node.Queue.register(node);
