@@ -139,46 +139,54 @@ module.exports = function(RED) {
 
         switch (msg.cmd) {
           case "add":
-            console.log("this is add");
             (async function(msg) {
+              // get all repeatable jobs
               const jobs = await bullqueue.getRepeatableJobs();
+              // delete any repeatable jobs with the same key
+              // this is to make sure that only one job is associated with the key
               for (let i = 0; i < jobs.length; i++) {
                 if (jobs[i].key.includes(msg.jobopts.jobId)) {
                   await bullqueue.removeRepeatableByKey(jobs[i].key);
                 }
               }
+              // add the new job
               msg.payload = await bullqueue.add(
                 { payload: msg.payload },
                 msg.jobopts
               );
+              // send the message to next node
               node.send(msg);
             })(msg);
             break;
           case "count":
-            console.log("this is count");
             (async function(msg) {
+              // count how many repeateable jobs in the queue
               msg.payload = await bullqueue.count();
+              // send the message to next node
               node.send(msg);
             })(msg);
             break;
           case "getRepeatableJobs":
-            console.log("this is getRepeatableJobs");
             (async function(msg) {
+              // list all repeatable jobs
               msg.payload = await bullqueue.getRepeatableJobs();
+              // send the message to next node
               node.send(msg);
             })(msg);
             break;
           case "removeRepeatableByKey":
-            console.log("this is removeRepeatableByKey");
             (async function(msg) {
               const jobs = await bullqueue.getRepeatableJobs();
               if (msg.jobid !== undefined || msg.jobid !== null) {
+                // go through the list of all jobs
                 for (let i = 0; i < jobs.length; i++) {
+                  // find the job which includes the key specified
                   if (jobs[i].key.includes(msg.jobid)) {
+                    // and remove this job
                     msg.payload = await bullqueue.removeRepeatableByKey(
                       jobs[i].key
                     );
-                    console.log(msg.payload);
+                    // because there is only one job associated with the key, so we can stop here
                     break;
                   }
                 }
@@ -189,9 +197,10 @@ module.exports = function(RED) {
             })(msg);
             break;
           case "stopAndRemoveAllJobs":
-            console.log("this is stopAndRemoveAllJobs");
             (async function(msg) {
+              // empties a queue deleting all the input lists and associated jobs.
               msg.payload = await bullqueue.empty();
+              // remove all repeatablejobs
               const jobs = await bullqueue.getRepeatableJobs();
               if (msg.payload === undefined || msg.payload === null) {
                 msg.payload = "";
