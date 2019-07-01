@@ -3,9 +3,10 @@
 ![Version](https://img.shields.io/badge/version-0.0.1-blue.svg?cacheSeconds=2592000)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/pauldeng/node-red-contrib-bull/blob/master/LICENSE)
 
-> A powerful job queue nodes for Node-RED.  
-> This repo is not in production quality. I use it primirarly for bulls repeatble jobs and I do not implement and test other functions. Pull Request welcome.  
-> This repo is forked from [node-red-contrib-job-queue](https://github.com/cuongquay/node-red-contrib-job-queue) but with comperhensive changes. The changes are:
+> A powerful job queue nodes for Node-RED.
+
+This repo is not in production quality. I use it primirarly for bulls repeatble jobs and I do not implement and test other functions. Pull Request welcome.  
+This repo is forked from [node-red-contrib-job-queue](https://github.com/cuongquay/node-red-contrib-job-queue) but with comperhensive changes. The changes are:
 
 - updated bull to 3.10.0
 - removed the function in queue-run node
