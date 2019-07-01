@@ -1,98 +1,47 @@
-# node-red-contrib-job-queue
+# node-red-contrib-bull
 
-Work in progress, please do not use
+![Version](https://img.shields.io/badge/version-0.0.1-blue.svg?cacheSeconds=2592000)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/pauldeng/node-red-contrib-bull/blob/master/LICENSE)
 
-A pair of queue nodes where you can write code to run in the background as a queued job which is used OptimalBits/bull library as the core of job management.
+> A powerful job queue nodes for Node-RED.
+> This repo is not in production quality. I use it primirarly for bulls repeatble jobs and I do not implement and test other functions. Pull Request welcome.
+> This repo is forked from [node-red-contrib-job-queue](https://github.com/cuongquay/node-red-contrib-job-queue) but with comperhensive changes. The changes are:
 
-[![npm version](https://badge.fury.io/js/node-red-contrib-job-queue.svg)](https://badge.fury.io/js/node-red-contrib-job-queue)
+- updated bull to 3.10.0
+- removed the function in queue-run node
+- removed the Command drop down box from queue-cmd node, this node accepts new command from msg input
+- rename and icon
 
-**Queue In:** start a job by name with msg.payload as the job.data of the queue job.
+## Install
 
-**Queue Out:** run a job by name as a background nodejs function which is managed through a redis server. 
-
-Full example job function code:
-
-```javascript
-
-// transcode image asynchronously and report progress
-job.progress(42);
-console.log("Running.....", job.data, job.opts);
-
-setTimeout(function(){ 
-    // call done when finished
-    done(null, {
-        "Hello": "CuongQuay"
-    });
-}, 5000); 
-
-return msg;
-
+```sh
+sudo apt install redis
+cd ~/.node-red
+npm install https://github.com/pauldeng/node-red-contrib-bull.git
 ```
 
-The message is passed in as a JavaScript object called msg.job and msg.done object to the job function.
+## Run Example
 
-By convention it will pass a whole msg object to the job.data as the parameter of the queue function.
+1. copy the content within examples/example_flow.json
+2. paste it into Node-Red import Clipboard
+3. click inject node to "simple", it will add job to bull queue. Debug node linked to bull run will print the payload.
+4. click inject node to "add cron job", it will add cron job to bull queue. Debug node linked to bull run will print the payload every 10 seconds
+5. click inject node to "getRepeatableJobs", it will retrivev all repeatable jobs. Debug node will print all repeatable jobs in msg.payload
+6. click inject node to "count", it will count all repeatable jobs. Debug node will print the total number of repeatable jobs in msg.payload
+7. click inject node to "removeRepeatableByKey", it delete the repeatable job which contains msg.jobid.
+8. click inject node to "stopAndRemoveAllJobs", it delete all repeatable job.
 
-**Queued job management:**
+## Author
 
-When writting a queued execution code, these funcions are available:
+👤 **Paul Deng**
 
-```javascript
-job.progress(50)
-done()
-done(Error('error transcoding'))
-done(null, { message: "Passing result..." })
-```
+- Twitter: [@pauldeng](https://twitter.com/pauldeng)
+- Github: [@pauldeng](https://github.com/pauldeng)
 
-**Logging and Error Handling**
+## 📝 License
 
-To log any information, or report an error, the following functions are available:
+Copyright © 2019 [Paul Deng](https://github.com/pauldeng).
 
-```javascript
-node.log("Log")
-node.warn("Warning")
-node.error("Error")
-```
+This project is [MIT](https://github.com/pauldeng/node-red-contrib-bull/blob/master/LICENSE) licensed.
 
-The Catch node can also be used to handle errors. To invoke a Catch node, pass msg as a second argument to node.error:
-
-```javascript
-node.error("Error",msg)
-```
-
-**Sending messages**
-
-The function can either return the messages it wants to pass on to the next nodes in the flow, or can call node.send(messages).
-
-It can return/send:
-
-a single message object - passed to nodes connected to the first output
-an array of message objects - passed to nodes connected to the corresponding outputs
-If any element of the array is itself an array of messages, multiple messages are sent to the corresponding output.
-
-If null is returned, either by itself or as an element of the array, no message is passed on.
-
-##License
-
-(The MIT License)
-
-Copyright (c) 2016 Duong Dinh Cuong <cuong3ihut@gmail.com>
-
-Permission is hereby granted, free of charge, to any person obtaining
-a copy of this software and associated documentation files (the
-'Software'), to deal in the Software without restriction, including
-without limitation the rights to use, copy, modify, merge, publish,
-distribute, sublicense, and/or sell copies of the Software, and to
-permit persons to whom the Software is furnished to do so, subject to
-the following conditions:
-
-The above copyright notice and this permission notice shall be
-included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+---
