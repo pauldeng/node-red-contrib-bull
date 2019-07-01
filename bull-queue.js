@@ -85,7 +85,6 @@ module.exports = function(RED) {
     };
 
     this.on("close", function(removed, done) {
-      console.log("closing");
       this.closing = true;
       if (this.connected) {
         this.queue.once("close", function() {
@@ -137,10 +136,79 @@ module.exports = function(RED) {
     try {
       this.on("input", function(msg) {
         var bullqueue = node.bullConn.connect();
-        msg.result = (async function(msg) {
-          return await bullqueue.add({ payload: msg.payload }, msg.jobopts);
-        })(msg);
-        node.send(msg);
+
+        switch (msg.cmd) {
+          case "add":
+            console.log("this is add");
+            (async function(msg) {
+              const jobs = await bullqueue.getRepeatableJobs();
+              for (let i = 0; i < jobs.length; i++) {
+                if (jobs[i].key.includes(msg.jobopts.jobId)) {
+                  await bullqueue.removeRepeatableByKey(jobs[i].key);
+                }
+              }
+              msg.payload = await bullqueue.add(
+                { payload: msg.payload },
+                msg.jobopts
+              );
+              node.send(msg);
+            })(msg);
+            break;
+          case "count":
+            console.log("this is count");
+            (async function(msg) {
+              msg.payload = await bullqueue.count();
+              node.send(msg);
+            })(msg);
+            break;
+          case "getRepeatableJobs":
+            console.log("this is getRepeatableJobs");
+            (async function(msg) {
+              msg.payload = await bullqueue.getRepeatableJobs();
+              node.send(msg);
+            })(msg);
+            break;
+          case "removeRepeatableByKey":
+            console.log("this is removeRepeatableByKey");
+            (async function(msg) {
+              const jobs = await bullqueue.getRepeatableJobs();
+              if (msg.jobid !== undefined || msg.jobid !== null) {
+                for (let i = 0; i < jobs.length; i++) {
+                  if (jobs[i].key.includes(msg.jobid)) {
+                    msg.payload = await bullqueue.removeRepeatableByKey(
+                      jobs[i].key
+                    );
+                    console.log(msg.payload);
+                    break;
+                  }
+                }
+              } else {
+                msg.payload = "no job id specified";
+              }
+              node.send(msg);
+            })(msg);
+            break;
+          case "stopAndRemoveAllJobs":
+            console.log("this is stopAndRemoveAllJobs");
+            (async function(msg) {
+              msg.payload = await bullqueue.empty();
+              const jobs = await bullqueue.getRepeatableJobs();
+              if (msg.payload === undefined || msg.payload === null) {
+                msg.payload = "";
+              }
+              for (let i = 0; i < jobs.length; i++) {
+                msg.payload = await bullqueue.removeRepeatableByKey(
+                  jobs[i].key
+                );
+              }
+              node.send(msg);
+            })(msg);
+            break;
+          default:
+            node.log("TBA " + msg.cmd);
+            break;
+        }
+
         /*
         node.Queue.connect().then(
           function(queue) {
