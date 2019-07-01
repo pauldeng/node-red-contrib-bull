@@ -32,6 +32,19 @@ npm install https://github.com/pauldeng/node-red-contrib-bull.git
 7. click inject node to "removeRepeatableByKey", it delete the repeatable job which contains msg.jobid.
 8. click inject node to "stopAndRemoveAllJobs", it delete all repeatable job.
 
+## Development
+
+```sh
+sudo apt install redis
+cd
+git clone https://github.com/pauldeng/node-red-contrib-bull.git
+cd node-red-contrib-bull
+npm link
+cd ~/.node-red
+npm link node-red-contrib-bull
+# make code changes and restart node-red to test
+```
+
 ## Author
 
 👤 **Paul Deng**
