@@ -174,6 +174,30 @@ module.exports = function(RED) {
               node.send(msg);
             })(msg);
             break;
+          case "getRepeatableJobByKey":
+            console.log("hello");
+            (async function(msg) {
+              // get all repeatable jobs
+              const jobs = await bullqueue.getRepeatableJobs();
+              if (msg.jobid !== undefined || msg.jobid !== null) {
+                msg.payload = "no job id found";
+                // go through the list of all jobs
+                for (let i = 0; i < jobs.length; i++) {
+                  // find the job which includes the key specified
+                  if (jobs[i].key.includes(msg.jobid)) {
+                    // and assign it to msg.payload
+                    msg.payload = jobs[i];
+                    console.log(msg.payload);
+                    // because there is only one job associated with the key, so we can stop here
+                    break;
+                  }
+                }
+              } else {
+                msg.payload = "no job id specified";
+              }
+              node.send(msg);
+            })(msg);
+            break;
           case "removeRepeatableByKey":
             (async function(msg) {
               const jobs = await bullqueue.getRepeatableJobs();

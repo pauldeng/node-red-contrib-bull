@@ -1,15 +1,15 @@
 [
   {
-    "id": "1f385a0a.123db6",
+    "id": "2cfd839d.39725c",
     "type": "tab",
     "label": "Flow 1",
     "disabled": false,
     "info": ""
   },
   {
-    "id": "2fba60d5.9222d",
+    "id": "bcfe0283.48797",
     "type": "debug",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "",
     "active": true,
     "tosidebar": true,
@@ -22,9 +22,9 @@
     "wires": []
   },
   {
-    "id": "c576e560.971c68",
+    "id": "5a16ee6f.7925b",
     "type": "inject",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "",
     "topic": "",
     "payload": "",
@@ -35,12 +35,12 @@
     "onceDelay": 0.1,
     "x": 180,
     "y": 220,
-    "wires": [["1febda4.fcd0c26"]]
+    "wires": [["f6e1579d.af8af8"]]
   },
   {
-    "id": "2090f395.9775ec",
+    "id": "d00a446d.f5ad78",
     "type": "debug",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "",
     "active": true,
     "tosidebar": true,
@@ -53,45 +53,45 @@
     "wires": []
   },
   {
-    "id": "4911735a.a51d2c",
+    "id": "a64cac58.fa3a1",
     "type": "bull cmd",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "",
-    "queue": "8814b5de.a45528",
+    "queue": "d181442b.40d5e8",
     "cmd": 0,
     "x": 720,
     "y": 220,
-    "wires": [["2fba60d5.9222d"]]
+    "wires": [["bcfe0283.48797"]]
   },
   {
-    "id": "c4a31ff.361afe",
+    "id": "9e7ed1d0.d187",
     "type": "bull run",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "",
     "func": "\nreturn msg;",
     "outputs": 1,
     "noerr": 0,
-    "queue": "8814b5de.a45528",
+    "queue": "d181442b.40d5e8",
     "x": 190,
     "y": 120,
-    "wires": [["2090f395.9775ec"]]
+    "wires": [["d00a446d.f5ad78"]]
   },
   {
-    "id": "1febda4.fcd0c26",
+    "id": "f6e1579d.af8af8",
     "type": "function",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "simple",
     "func": "msg.cmd = \"add\";\n//msg.jobopts = {\"jobId\": msg.payload.toString(), \"delay\": 2000};\nreturn msg;",
     "outputs": 1,
     "noerr": 0,
     "x": 350,
     "y": 220,
-    "wires": [["4911735a.a51d2c"]]
+    "wires": [["a64cac58.fa3a1"]]
   },
   {
-    "id": "db52d6bf.f39a28",
+    "id": "9a6123e6.62c29",
     "type": "debug",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "",
     "active": true,
     "tosidebar": true,
@@ -104,9 +104,9 @@
     "wires": []
   },
   {
-    "id": "6f758e44.3381a",
+    "id": "7926462b.d2e218",
     "type": "inject",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "",
     "topic": "",
     "payload": "",
@@ -117,35 +117,35 @@
     "onceDelay": 0.1,
     "x": 180,
     "y": 320,
-    "wires": [["796f29b1.743b48"]]
+    "wires": [["270a1100.62546"]]
   },
   {
-    "id": "c07aa31b.06174",
+    "id": "21e8d586.3d9b0a",
     "type": "bull cmd",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "",
-    "queue": "8814b5de.a45528",
+    "queue": "d181442b.40d5e8",
     "cmd": 0,
     "x": 720,
     "y": 320,
-    "wires": [["db52d6bf.f39a28"]]
+    "wires": [["9a6123e6.62c29"]]
   },
   {
-    "id": "796f29b1.743b48",
+    "id": "270a1100.62546",
     "type": "function",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "add cron job",
     "func": "msg.cmd = \"add\";\nmsg.jobopts = {\"jobId\": \"hi\", \"repeat\": {\"cron\": \"*/10 * * * * *\"}};\nreturn msg;",
     "outputs": 1,
     "noerr": 0,
     "x": 370,
     "y": 320,
-    "wires": [["c07aa31b.06174"]]
+    "wires": [["21e8d586.3d9b0a"]]
   },
   {
-    "id": "6aa8b693.386bf8",
+    "id": "2283ea49.9fd4a6",
     "type": "debug",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "",
     "active": true,
     "tosidebar": true,
@@ -158,9 +158,9 @@
     "wires": []
   },
   {
-    "id": "c93e1024.d8fd9",
+    "id": "44731884.b14ed8",
     "type": "inject",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "",
     "topic": "",
     "payload": "",
@@ -171,35 +171,35 @@
     "onceDelay": 0.1,
     "x": 180,
     "y": 420,
-    "wires": [["1fef2be6.2b0994"]]
+    "wires": [["7acfb222.9e63fc"]]
   },
   {
-    "id": "24743110.a1184e",
+    "id": "2fb00693.51de5a",
     "type": "bull cmd",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "",
-    "queue": "8814b5de.a45528",
+    "queue": "d181442b.40d5e8",
     "cmd": 0,
     "x": 720,
     "y": 420,
-    "wires": [["6aa8b693.386bf8"]]
+    "wires": [["2283ea49.9fd4a6"]]
   },
   {
-    "id": "1fef2be6.2b0994",
+    "id": "7acfb222.9e63fc",
     "type": "function",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "stopAndRemoveAllJobs",
     "func": "msg.cmd = \"stopAndRemoveAllJobs\";\nreturn msg;",
     "outputs": 1,
     "noerr": 0,
     "x": 410,
     "y": 420,
-    "wires": [["24743110.a1184e"]]
+    "wires": [["2fb00693.51de5a"]]
   },
   {
-    "id": "24a20eb1.5a1802",
+    "id": "37c872c6.38112e",
     "type": "debug",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "",
     "active": true,
     "tosidebar": true,
@@ -212,9 +212,9 @@
     "wires": []
   },
   {
-    "id": "1b5a8ade.d24075",
+    "id": "fddd0761.b7e508",
     "type": "inject",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "",
     "topic": "",
     "payload": "",
@@ -225,35 +225,35 @@
     "onceDelay": 0.1,
     "x": 180,
     "y": 520,
-    "wires": [["2180398d.657dd6"]]
+    "wires": [["612d8546.7446bc"]]
   },
   {
-    "id": "fc99bf86.c5ae6",
+    "id": "3e1a59e8.e07896",
     "type": "bull cmd",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "",
-    "queue": "8814b5de.a45528",
+    "queue": "d181442b.40d5e8",
     "cmd": 0,
     "x": 720,
     "y": 520,
-    "wires": [["24a20eb1.5a1802"]]
+    "wires": [["37c872c6.38112e"]]
   },
   {
-    "id": "2180398d.657dd6",
+    "id": "612d8546.7446bc",
     "type": "function",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "getRepeatableJobs",
     "func": "msg.cmd = \"getRepeatableJobs\";\nreturn msg;",
     "outputs": 1,
     "noerr": 0,
     "x": 390,
     "y": 520,
-    "wires": [["fc99bf86.c5ae6"]]
+    "wires": [["3e1a59e8.e07896"]]
   },
   {
-    "id": "94c03afd.bf92d8",
+    "id": "ffda7b41.db3658",
     "type": "debug",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "",
     "active": true,
     "tosidebar": true,
@@ -266,9 +266,9 @@
     "wires": []
   },
   {
-    "id": "514d9968.b4d4c8",
+    "id": "a913dc70.1fc67",
     "type": "inject",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "",
     "topic": "",
     "payload": "",
@@ -279,35 +279,35 @@
     "onceDelay": 0.1,
     "x": 180,
     "y": 620,
-    "wires": [["8e20c51f.d1ee38"]]
+    "wires": [["b10c5c15.1c222"]]
   },
   {
-    "id": "50dd5b2b.505774",
+    "id": "12794a8a.4f1485",
     "type": "bull cmd",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "",
-    "queue": "8814b5de.a45528",
+    "queue": "d181442b.40d5e8",
     "cmd": 0,
     "x": 720,
     "y": 620,
-    "wires": [["94c03afd.bf92d8"]]
+    "wires": [["ffda7b41.db3658"]]
   },
   {
-    "id": "8e20c51f.d1ee38",
+    "id": "b10c5c15.1c222",
     "type": "function",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "count",
     "func": "msg.cmd = \"count\";\nreturn msg;",
     "outputs": 1,
     "noerr": 0,
     "x": 350,
     "y": 620,
-    "wires": [["50dd5b2b.505774"]]
+    "wires": [["12794a8a.4f1485"]]
   },
   {
-    "id": "17fa0603.5d650a",
+    "id": "5b2e1ff1.5b83d",
     "type": "debug",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "",
     "active": true,
     "tosidebar": true,
@@ -320,9 +320,9 @@
     "wires": []
   },
   {
-    "id": "69cd0cf0.391124",
+    "id": "cda3424f.35461",
     "type": "inject",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "",
     "topic": "",
     "payload": "",
@@ -333,33 +333,87 @@
     "onceDelay": 0.1,
     "x": 180,
     "y": 720,
-    "wires": [["7b048b34.112e54"]]
+    "wires": [["ffa13d08.01a4b"]]
   },
   {
-    "id": "8b0fefea.e6a41",
+    "id": "b602e041.69ea3",
     "type": "bull cmd",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "",
-    "queue": "8814b5de.a45528",
+    "queue": "d181442b.40d5e8",
     "cmd": 0,
     "x": 720,
     "y": 720,
-    "wires": [["17fa0603.5d650a"]]
+    "wires": [["5b2e1ff1.5b83d"]]
   },
   {
-    "id": "7b048b34.112e54",
+    "id": "ffa13d08.01a4b",
     "type": "function",
-    "z": "1f385a0a.123db6",
+    "z": "2cfd839d.39725c",
     "name": "removeRepeatableByKey",
     "func": "msg.cmd = \"removeRepeatableByKey\";\nmsg.jobid = \"hi\";\nreturn msg;",
     "outputs": 1,
     "noerr": 0,
     "x": 410,
     "y": 720,
-    "wires": [["8b0fefea.e6a41"]]
+    "wires": [["b602e041.69ea3"]]
   },
   {
-    "id": "8814b5de.a45528",
+    "id": "be2443a5.1331f",
+    "type": "debug",
+    "z": "2cfd839d.39725c",
+    "name": "",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "true",
+    "targetType": "full",
+    "x": 970,
+    "y": 820,
+    "wires": []
+  },
+  {
+    "id": "9d427961.7a5cf8",
+    "type": "inject",
+    "z": "2cfd839d.39725c",
+    "name": "",
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "x": 180,
+    "y": 820,
+    "wires": [["ce88925c.fd974"]]
+  },
+  {
+    "id": "7dac94be.17d33c",
+    "type": "bull cmd",
+    "z": "2cfd839d.39725c",
+    "name": "",
+    "queue": "d181442b.40d5e8",
+    "cmd": 0,
+    "x": 720,
+    "y": 820,
+    "wires": [["be2443a5.1331f"]]
+  },
+  {
+    "id": "ce88925c.fd974",
+    "type": "function",
+    "z": "2cfd839d.39725c",
+    "name": "getRepeatableJobByKey",
+    "func": "msg.cmd = \"getRepeatableJobByKey\";\nmsg.jobid = \"hi\";\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 410,
+    "y": 820,
+    "wires": [["7dac94be.17d33c"]]
+  },
+  {
+    "id": "d181442b.40d5e8",
     "type": "bull-queue-server",
     "z": "",
     "name": "hello",
