@@ -175,7 +175,6 @@ module.exports = function(RED) {
             })(msg);
             break;
           case "getRepeatableJobByKey":
-            console.log("hello");
             (async function(msg) {
               // get all repeatable jobs
               const jobs = await bullqueue.getRepeatableJobs();
