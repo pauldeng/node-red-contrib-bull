@@ -161,7 +161,8 @@ module.exports = function(RED) {
           case "count":
             (async function(msg) {
               // count how many repeateable jobs in the queue
-              msg.payload = await bullqueue.count();
+              const jobs = await bullqueue.getRepeatableJobs();
+              msg.payload = jobs.length;
               // send the message to next node
               node.send(msg);
             })(msg);
@@ -234,13 +235,13 @@ module.exports = function(RED) {
                 );
               }
 
-              // clean repeat queue, please refer to 
+              // clean repeat queue, please refer to
               // https://github.com/OptimalBits/bull/issues/709#issuecomment-344561983
-              bullqueue.clean(0, 'delayed');
-              bullqueue.clean(0, 'wait');
-              bullqueue.clean(0, 'active');
-              bullqueue.clean(0, 'completed');
-              bullqueue.clean(0, 'failed');
+              bullqueue.clean(0, "delayed");
+              bullqueue.clean(0, "wait");
+              bullqueue.clean(0, "active");
+              bullqueue.clean(0, "completed");
+              bullqueue.clean(0, "failed");
 
               node.send(msg);
             })(msg);
