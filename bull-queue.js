@@ -233,6 +233,15 @@ module.exports = function(RED) {
                   jobs[i].key
                 );
               }
+
+              // clean repeat queue, please refer to 
+              // https://github.com/OptimalBits/bull/issues/709#issuecomment-344561983
+              bullqueue.clean(0, 'delayed');
+              bullqueue.clean(0, 'wait');
+              bullqueue.clean(0, 'active');
+              bullqueue.clean(0, 'completed');
+              bullqueue.clean(0, 'failed');
+
               node.send(msg);
             })(msg);
             break;
