@@ -246,6 +246,19 @@ module.exports = function(RED) {
               node.send(msg);
             })(msg);
             break;
+          case "clean":
+              (async function(msg) {
+                // clean completed jobs in redis
+                // reference to https://github.com/OptimalBits/bull/issues/709#issuecomment-344561983
+                msg.payload = await bullqueue.clean(0, 'completed');
+                if (msg.payload === undefined || msg.payload === null) {
+                  msg.payload = "Failed to clean completed jobs";
+                } else {
+                  msg.payload = `Cleaned ${msg.payload.length} completed jobs`;
+                }
+                node.send(msg);
+              })(msg);
+              break;
           default:
             node.log("TBA " + msg.cmd);
             break;
