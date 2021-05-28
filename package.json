@@ -1,12 +1,12 @@
 {
   "name": "node-red-contrib-bull",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A powerful job queue nodes for Node-RED",
   "dependencies": {
-    "bull": "^3.10.0",
+    "bull": "^3.22.6",
     "is-utf8": "^0.2.1",
     "q": "^1.5.1",
-    "request": "^2.88.0",
+    "request": "^2.88.2",
     "sprintf-js": "^1.1.2"
   },
   "license": "MIT",
