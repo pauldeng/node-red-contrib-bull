@@ -27,6 +27,7 @@ module.exports = function(RED) {
     this.name = n.name;
     this.address = n.address;
     this.port = n.port;
+    this.password = n.password;
 
     // Config node state
     this.connected = false;
@@ -64,7 +65,14 @@ module.exports = function(RED) {
       if (!node.connected && !node.connecting) {
         node.connecting = true;
         try {
-          node.queue = Queue(node.name, node.port, node.address);
+          //node.queue = Queue(node.name, node.port, node.address);
+          node.queue = Queue(node.name, {
+            redis: {
+              port: node.port,
+              host: node.address,
+              password: node.password
+            }
+          }, );
           node.log(sprintf("connected to %s:%d", node.address, node.port));
           node.connecting = false;
           node.connected = true;
