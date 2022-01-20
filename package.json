@@ -3,7 +3,7 @@
   "version": "0.0.2",
   "description": "A powerful job queue nodes for Node-RED",
   "dependencies": {
-    "bull": "^3.22.7",
+    "bull": "^4.2.1",
     "sprintf-js": "^1.1.2"
   },
   "license": "MIT",
