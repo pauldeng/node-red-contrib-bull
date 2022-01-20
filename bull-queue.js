@@ -152,14 +152,12 @@ module.exports = function(RED) {
               const jobs = await bullqueue.getRepeatableJobs();
               // delete any repeatable jobs with the same key
               // this is to make sure that only one job is associated with the key
-              if (msg.jobopts != null) {
+              if (msg.jobopts.repeat != null) {
                 for (let i = 0; i < jobs.length; i++) {
                   if (jobs[i].key.includes(msg.jobopts.jobId)) {
                     await bullqueue.removeRepeatableByKey(jobs[i].key);
                   }
                 }
-              } else {
-                msg.jobopts = {};
               }
               // add the new job
               msg.payload = await bullqueue.add(
