@@ -1,6 +1,6 @@
 {
   "name": "node-red-contrib-bull",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "A powerful job queue nodes for Node-RED",
   "dependencies": {
     "bull": "^4.2.1",
