@@ -8,7 +8,7 @@
 This repo is not in production quality. I use it primirarly for bulls repeatble jobs and I do not implement and test other functions. Pull Request welcome.  
 This repo is forked from [node-red-contrib-job-queue](https://github.com/cuongquay/node-red-contrib-job-queue) but with comperhensive changes. The changes are:
 
-- updated bull to 3.10.0
+- updated bull to 4.2.1
 - removed the function in queue-run node
 - removed the Command drop down box from queue-cmd node, this node accepts new command from msg input
 - rename and icon
@@ -45,6 +45,11 @@ npm link node-red-contrib-bull
 # make code changes and restart node-red to test
 ```
 
+## Roadmap
+
+- [ ] Node connection status
+- [ ] Reconnect status
+
 ## Author
 
 👤 **Paul Deng**
@@ -54,7 +59,7 @@ npm link node-red-contrib-bull
 
 ## 📝 License
 
-Copyright © 2019 [Paul Deng](https://github.com/pauldeng).
+Copyright © 2022 [Paul Deng](https://github.com/pauldeng).
 
 This project is [MIT](https://github.com/pauldeng/node-red-contrib-bull/blob/master/LICENSE) licensed.
 
