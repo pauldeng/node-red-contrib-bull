@@ -321,6 +321,12 @@ module.exports = function(RED) {
       this.error(err);
     }
 
+    node.status({
+      fill: "green",
+      shape: "dot",
+      text: "node-red:common.status.connected"
+    });
+
     this.on("close", function(removed, done) {
       if (node.bullConn) {
         node.brokerConn.deregister(node, done);
