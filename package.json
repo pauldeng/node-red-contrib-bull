@@ -62,7 +62,7 @@
     "email": "dengpeng.cn@gmail.com"
   },
   "devDependencies": {
-    "@playwright/test": "1.60.0",
+    "@playwright/test": "1.61.0",
     "node-red": "5.0.0",
     "node-red-node-test-helper": "^0.3.6",
     "prettier": "3.8.3"
