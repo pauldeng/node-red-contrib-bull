@@ -25,7 +25,7 @@
     "validate": "npx --yes node-red-dev validate"
   },
   "dependencies": {
-    "bullmq": "5.78.0",
+    "bullmq": "5.79.0",
     "ioredis": "5.10.1"
   },
   "license": "MIT",
