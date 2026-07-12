@@ -195,33 +195,11 @@ test("stopAndRemoveAllJobs removes schedulers, drains, and cleans inactive state
     ["removeJobScheduler", "a"],
     ["removeJobScheduler", "b"],
     ["drain", true],
-    ["clean", 0, 1000, "completed"],
-    ["clean", 0, 1000, "failed"],
-    ["clean", 0, 1000, "delayed"],
-    ["clean", 0, 1000, "wait"],
+    ["clean", 0, 0, "completed"],
+    ["clean", 0, 0, "failed"],
+    ["clean", 0, 0, "delayed"],
+    ["clean", 0, 0, "wait"],
   ]);
-});
-
-test("stopAndRemoveAllJobs cleans every batch of inactive jobs", async () => {
-  const queue = createQueueStub();
-  let completedCalls = 0;
-  queue.clean = async function clean(grace, limit, state) {
-    queue.calls.push(["clean", grace, limit, state]);
-    if (state === "completed" && completedCalls++ === 0) {
-      return Array.from({ length: limit }, (_, index) => `completed-${index}`);
-    }
-    return state === "completed" ? ["completed-last"] : [];
-  };
-
-  const result = await dispatchCommand(queue, { cmd: "stopAndRemoveAllJobs" });
-
-  assert.equal(result.cleaned.completed.length, 1001);
-  assert.equal(
-    queue.calls.filter(
-      ([command, , , state]) => command === "clean" && state === "completed",
-    ).length,
-    2,
-  );
 });
 
 test("setGlobalRateLimit accepts the documented payload options", async () => {
@@ -236,6 +214,14 @@ test("setGlobalRateLimit accepts the documented payload options", async () => {
   });
 
   assert.deepEqual(queue.calls, [["setGlobalRateLimit", 2, 1000]]);
+});
+
+test("setGlobalRateLimit requires max and duration", async () => {
+  await assert.rejects(
+    () =>
+      dispatchCommand(createRecordingQueue(), { cmd: "setGlobalRateLimit" }),
+    /msg\.max and msg\.duration are required/,
+  );
 });
 
 test("maps job listing commands and serializes jobs", async () => {

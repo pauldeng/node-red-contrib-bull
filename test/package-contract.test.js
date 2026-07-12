@@ -41,7 +41,7 @@ test("package metadata targets BullMQ, Node.js 18+, and Node-RED 4.1/5.x", () =>
   assert.equal(packageJson.dependencies?.bull, undefined);
   assert.equal(packageJson.dependencies?.["sprintf-js"], undefined);
   assert.equal(packageJson.dependencies?.bullmq, "5.80.2");
-  assert.match(packageJson.dependencies?.ioredis || "", /^5\./);
+  assert.equal(packageJson.dependencies?.ioredis, "5.10.1");
 
   assert.equal(packageJson.engines?.node, ">=18");
   assert.equal(packageJson["node-red"]?.version, ">=4.1.0 <6");

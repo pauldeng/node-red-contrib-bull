@@ -9,6 +9,7 @@ The user's explicit version-update request supersedes the repository's previous 
 ## Dependency Update
 
 - Change `bullmq` from `5.78.0` to `5.80.2` in `package.json` and `package-lock.json`.
+- Align direct `ioredis` with BullMQ's tested `5.10.1` pin so npm installs one deduplicated copy.
 - Update package-contract assertions, runtime comments, README text, and maintained documentation that names `5.78.0`.
 - Preserve the existing public Node-RED node types, message contracts, Redis connection behavior, scheduler IDs, and lock-token isolation.
 - Do not copy the stale Dependabot PR's `5.79.2` lockfile. Generate the lockfile from the current exact pin.
