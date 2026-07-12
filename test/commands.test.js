@@ -340,6 +340,184 @@ test("required-job commands reject missing ids and jobs", async () => {
   );
 });
 
+test("maps native Job Scheduler commands", async () => {
+  const queue = createRecordingQueue({
+    upsertJobScheduler: {
+      id: "next-job",
+      name: "scheduled",
+      extra: "ignored",
+    },
+    getJobScheduler: {
+      id: "scheduler-1",
+      pattern: "*/5 * * * *",
+      extra: "ignored",
+    },
+    getJobSchedulers: [
+      {
+        id: "scheduler-1",
+        pattern: "*/5 * * * *",
+        extra: "ignored",
+      },
+    ],
+    getJobSchedulersCount: 1,
+    removeJobScheduler: true,
+  });
+  const repeat = { pattern: "*/5 * * * *" };
+  const template = { name: "scheduled" };
+
+  assert.deepEqual(
+    await dispatchCommand(queue, {
+      cmd: "upsertJobScheduler",
+      schedulerId: "scheduler-1",
+      repeat,
+      template,
+    }),
+    { id: "next-job", name: "scheduled" },
+  );
+  assert.deepEqual(
+    await dispatchCommand(queue, {
+      cmd: "getJobScheduler",
+      schedulerId: "scheduler-1",
+    }),
+    { id: "scheduler-1", pattern: "*/5 * * * *" },
+  );
+  assert.deepEqual(
+    await dispatchCommand(queue, {
+      cmd: "getJobSchedulers",
+      start: 1,
+      end: 3,
+      asc: false,
+    }),
+    [{ id: "scheduler-1", pattern: "*/5 * * * *" }],
+  );
+  assert.equal(
+    await dispatchCommand(queue, { cmd: "getJobSchedulersCount" }),
+    1,
+  );
+  assert.equal(
+    await dispatchCommand(queue, {
+      cmd: "removeJobScheduler",
+      schedulerId: "scheduler-1",
+    }),
+    true,
+  );
+  assert.deepEqual(queue.calls, [
+    ["upsertJobScheduler", "scheduler-1", repeat, template],
+    ["getJobScheduler", "scheduler-1"],
+    ["getJobSchedulers", 1, 3, false],
+    ["getJobSchedulersCount"],
+    ["removeJobScheduler", "scheduler-1"],
+  ]);
+});
+
+test("maps queue administration, limits, logs, and metrics commands", async () => {
+  const cases = [
+    ["retryJobs", { opts: { count: 2 } }, [{ count: 2 }], "retried", "retried"],
+    ["promoteJobs", {}, [], "promoted", "promoted"],
+    [
+      "getCountsPerPriority",
+      { priorities: [1, 5] },
+      [[1, 5]],
+      { 1: 2 },
+      { 1: 2 },
+    ],
+    [
+      "getDeduplicationJobId",
+      { deduplicationId: "dedupe" },
+      ["dedupe"],
+      "job-1",
+      "job-1",
+    ],
+    ["removeDeduplicationKey", { deduplicationId: "dedupe" }, ["dedupe"], 1, 1],
+    [
+      "getJobCounts",
+      { types: ["waiting", "failed"] },
+      ["waiting", "failed"],
+      { waiting: 1 },
+      { waiting: 1 },
+    ],
+    ["pause", {}, [], undefined, true],
+    ["resume", {}, [], undefined, true],
+    ["drain", { delayed: true }, [true], undefined, true],
+    [
+      "clean",
+      { grace: 10, limit: 20, state: "failed" },
+      [10, 20, "failed"],
+      ["job-1"],
+      ["job-1"],
+    ],
+    ["setGlobalConcurrency", { concurrency: 3 }, [3], 3, true],
+    ["getGlobalConcurrency", {}, [], 3, 3],
+    ["removeGlobalConcurrency", {}, [], 1, 1],
+    ["setGlobalRateLimit", { max: 2, duration: 1000 }, [2, 1000], 1, true],
+    [
+      "getGlobalRateLimit",
+      {},
+      [],
+      { max: 2, duration: 1000 },
+      { max: 2, duration: 1000 },
+    ],
+    ["removeGlobalRateLimit", {}, [], 1, 1],
+    ["rateLimit", { duration: 500 }, [500], undefined, true],
+    ["getRateLimitTtl", { maxJobs: 2 }, [2], 450, 450],
+    ["removeRateLimitKey", {}, [], 1, 1],
+    [
+      "addJobLog",
+      { jobId: "job-1", logRow: "row", keepLogs: 5 },
+      ["job-1", "row", 5],
+      1,
+      1,
+    ],
+    [
+      "getJobLogs",
+      { jobId: "job-1", start: 1, end: 2, asc: false },
+      ["job-1", 1, 2, false],
+      { logs: ["row"] },
+      { logs: ["row"] },
+    ],
+    ["exportPrometheusMetrics", {}, [], "metric 1", "metric 1"],
+  ];
+
+  for (const [cmd, msg, args, methodResult, expected] of cases) {
+    const queue = createRecordingQueue({ [cmd]: methodResult });
+    assert.deepEqual(
+      await dispatchCommand(queue, { cmd, ...msg }),
+      expected,
+      cmd,
+    );
+    assert.deepEqual(queue.calls, [[cmd, ...args]], cmd);
+  }
+});
+
+test("uses documented command defaults", async () => {
+  const queue = createRecordingQueue({
+    getJobs: [],
+    getDelayed: [],
+    getPrioritized: [],
+    getJobSchedulers: [],
+    clean: [],
+    getJobLogs: { logs: [] },
+  });
+
+  await dispatchCommand(queue, { cmd: "getJobs" });
+  await dispatchCommand(queue, { cmd: "getDelayed" });
+  await dispatchCommand(queue, { cmd: "getPrioritized" });
+  await dispatchCommand(queue, { cmd: "getJobSchedulers" });
+  await dispatchCommand(queue, { cmd: "drain" });
+  await dispatchCommand(queue, { cmd: "clean" });
+  await dispatchCommand(queue, { cmd: "getJobLogs", jobid: "job-1" });
+
+  assert.deepEqual(queue.calls, [
+    ["getJobs", undefined, 0, -1, false],
+    ["getDelayed", 0, -1],
+    ["getPrioritized", 0, -1],
+    ["getJobSchedulers", 0, -1, true],
+    ["drain", false],
+    ["clean", 0, 1000, "completed"],
+    ["getJobLogs", "job-1", 0, -1, true],
+  ]);
+});
+
 test("rejects unsupported command names", async () => {
   await assert.rejects(
     () => dispatchCommand(createQueueStub(), { cmd: "unknown" }),
