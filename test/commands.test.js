@@ -139,6 +139,42 @@ test("stopAndRemoveAllJobs removes schedulers, drains, and cleans inactive state
   ]);
 });
 
+test("stopAndRemoveAllJobs cleans every batch of inactive jobs", async () => {
+  const queue = createQueueStub();
+  let completedCalls = 0;
+  queue.clean = async function clean(grace, limit, state) {
+    queue.calls.push(["clean", grace, limit, state]);
+    if (state === "completed" && completedCalls++ === 0) {
+      return Array.from({ length: limit }, (_, index) => `completed-${index}`);
+    }
+    return state === "completed" ? ["completed-last"] : [];
+  };
+
+  const result = await dispatchCommand(queue, { cmd: "stopAndRemoveAllJobs" });
+
+  assert.equal(result.cleaned.completed.length, 1001);
+  assert.equal(
+    queue.calls.filter(
+      ([command, , , state]) => command === "clean" && state === "completed",
+    ).length,
+    2,
+  );
+});
+
+test("setGlobalRateLimit accepts the documented payload options", async () => {
+  const queue = createQueueStub();
+  queue.setGlobalRateLimit = async (...args) => {
+    queue.calls.push(["setGlobalRateLimit", ...args]);
+  };
+
+  await dispatchCommand(queue, {
+    cmd: "setGlobalRateLimit",
+    payload: { max: 2, duration: 1000 },
+  });
+
+  assert.deepEqual(queue.calls, [["setGlobalRateLimit", 2, 1000]]);
+});
+
 test("rejects unsupported command names", async () => {
   await assert.rejects(
     () => dispatchCommand(createQueueStub(), { cmd: "unknown" }),
