@@ -48,7 +48,7 @@ Supported deployment modes:
 - AWS MemoryDB, configured as Redis Cluster with TLS
 - Redis Sentinel
 
-Authentication can use Redis ACL username/password. TLS supports CA, client certificate, client key, server name, and certificate verification. Cluster and MemoryDB deployments should use a BullMQ prefix with a hash tag, such as `{bull}`, to keep queue keys in one Redis Cluster slot for atomic operations.
+Authentication can use Redis ACL username/password. TLS supports CA, client certificate, client key, server name, and certificate verification. Cluster and MemoryDB prefixes must contain a hash tag, such as `{bull}`, to keep queue keys in one Redis Cluster slot for atomic operations.
 
 ## Legacy Repeat Cron Compatibility
 

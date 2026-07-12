@@ -10,7 +10,7 @@ Deployment modes:
 - `cluster`: Redis Cluster and AWS MemoryDB.
 - `sentinel`: Redis Sentinel.
 
-Use `{bull}` for Cluster and MemoryDB unless you have a tested prefix strategy.
+Cluster and MemoryDB prefixes must contain a Redis hash tag; use `{bull}` unless you have a tested custom hash tag.
 
 ## `bull cmd`
 

@@ -12,7 +12,7 @@ Use deployment `cluster` and provide startup nodes as comma or newline separated
 
 Cluster auth and TLS are applied through ioredis `redisOptions`. The runtime sets a DNS lookup passthrough for TLS-enabled cluster discovery.
 
-Use a BullMQ prefix with a hash tag, normally `{bull}`.
+The BullMQ prefix must contain a Redis hash tag, normally `{bull}`. Untagged Cluster prefixes are rejected to prevent `CROSSSLOT` failures.
 
 ## AWS MemoryDB
 

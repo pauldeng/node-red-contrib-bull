@@ -79,6 +79,29 @@ test("builds Cluster and MemoryDB descriptors with a BullMQ hash-tag prefix", ()
   assert.equal(bullmqOptions.prefix, "{bull}");
 });
 
+test("rejects a Cluster prefix without a Redis hash tag", () => {
+  assert.throws(
+    () =>
+      normalizeQueueConfig({
+        name: "clustered",
+        deployment: "cluster",
+        clusterNodes: "redis.example.test:6379",
+        prefix: "bull",
+      }),
+    /Cluster BullMQ prefix must contain a Redis hash tag/,
+  );
+
+  assert.equal(
+    normalizeQueueConfig({
+      name: "clustered",
+      deployment: "cluster",
+      clusterNodes: "redis.example.test:6379",
+      prefix: "queues:{bull}",
+    }).prefix,
+    "queues:{bull}",
+  );
+});
+
 test("builds Sentinel descriptors with separate Sentinel auth and TLS", () => {
   const config = normalizeQueueConfig({
     name: "sentinel-queue",

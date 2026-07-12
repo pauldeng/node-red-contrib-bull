@@ -161,7 +161,7 @@
     <li><b>CA</b>: PEM certificate authority text for validating private Redis certificates. Stored as a Node-RED credential.</li>
     <li><b>Client Cert</b>: PEM client certificate for mutual TLS deployments. Stored as a Node-RED credential.</li>
     <li><b>Client Key</b>: PEM client private key for mutual TLS deployments. Stored as a Node-RED credential.</li>
-    <li><b>Prefix</b>: BullMQ key prefix. For Redis Cluster and MemoryDB, use a hash tag such as <code>{bull}</code> so BullMQ keys stay in one hash slot for atomic operations.</li>
+    <li><b>Prefix</b>: BullMQ key prefix. Redis Cluster and MemoryDB prefixes must contain a hash tag such as <code>{bull}</code> so BullMQ keys stay in one hash slot for atomic operations.</li>
   </ul>
 
   <h3>Example</h3>

@@ -37,6 +37,30 @@ test("rejects the waiter when the job fails", async () => {
   await assert.rejects(settled, /boom/);
 });
 
+test("returns a completion that happened before waiting", async () => {
+  const registry = new AcknowledgementRegistry();
+  const { entry } = registry.create(context(), 0);
+
+  entry.complete({ ok: true });
+
+  assert.deepEqual(
+    await Promise.race([entry.wait(), sleep(25, "missed settlement")]),
+    { ok: true },
+  );
+});
+
+test("throws a failure that happened before waiting", async () => {
+  const registry = new AcknowledgementRegistry();
+  const { entry } = registry.create(context(), 0);
+
+  entry.fail(new Error("boom"));
+
+  await assert.rejects(
+    Promise.race([entry.wait(), sleep(25, "missed settlement")]),
+    /boom/,
+  );
+});
+
 test("removes the entry from the registry after completion", async () => {
   const registry = new AcknowledgementRegistry();
   const { ackId, entry } = registry.create(context(), 0);
