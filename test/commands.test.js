@@ -42,6 +42,69 @@ function createQueueStub() {
   };
 }
 
+function createRecordingQueue(results = {}) {
+  const calls = [];
+  return new Proxy(
+    { calls },
+    {
+      get(target, method) {
+        if (method in target) {
+          return target[method];
+        }
+        return async (...args) => {
+          calls.push([method, ...args]);
+          return results[method];
+        };
+      },
+    },
+  );
+}
+
+function createJobStub() {
+  const calls = [];
+  return {
+    id: "job-1",
+    name: "example",
+    calls,
+    async getState() {
+      calls.push(["getState"]);
+      return "failed";
+    },
+    async remove() {
+      calls.push(["remove"]);
+    },
+    async retry(...args) {
+      calls.push(["retry", ...args]);
+    },
+    async changeDelay(...args) {
+      calls.push(["changeDelay", ...args]);
+    },
+    async promote() {
+      calls.push(["promote"]);
+    },
+    async changePriority(...args) {
+      calls.push(["changePriority", ...args]);
+    },
+  };
+}
+
+test("getDelayed uses the BullMQ start and end arguments", async () => {
+  const queue = createRecordingQueue({
+    getDelayed: [{ id: "delayed-1", name: "delayed" }],
+  });
+
+  assert.deepEqual(
+    await dispatchCommand(queue, {
+      cmd: "getDelayed",
+      start: 2,
+      end: 4,
+      asc: true,
+    }),
+    [{ id: "delayed-1", name: "delayed" }],
+  );
+  assert.deepEqual(queue.calls, [["getDelayed", 2, 4]]);
+});
+
 test("adds a normal job through BullMQ Queue.add", async () => {
   const queue = createQueueStub();
 
@@ -173,6 +236,108 @@ test("setGlobalRateLimit accepts the documented payload options", async () => {
   });
 
   assert.deepEqual(queue.calls, [["setGlobalRateLimit", 2, 1000]]);
+});
+
+test("maps job listing commands and serializes jobs", async () => {
+  const jobs = [{ id: "job-1", name: "example", extra: "ignored" }];
+  const bulk = [{ name: "example", data: { value: 1 } }];
+  const queue = createRecordingQueue({
+    addBulk: jobs,
+    getJob: jobs[0],
+    getJobs: jobs,
+    getPrioritized: jobs,
+  });
+
+  assert.deepEqual(
+    await dispatchCommand(queue, { cmd: "addBulk", payload: bulk }),
+    [{ id: "job-1", name: "example" }],
+  );
+  assert.deepEqual(
+    await dispatchCommand(queue, { cmd: "getJob", jobid: "job-1" }),
+    { id: "job-1", name: "example" },
+  );
+  assert.deepEqual(
+    await dispatchCommand(queue, {
+      cmd: "getJobs",
+      types: ["waiting"],
+      start: 2,
+      end: 3,
+      asc: true,
+    }),
+    [{ id: "job-1", name: "example" }],
+  );
+  assert.deepEqual(
+    await dispatchCommand(queue, {
+      cmd: "getPrioritized",
+      start: 1,
+      end: 2,
+    }),
+    [{ id: "job-1", name: "example" }],
+  );
+  assert.deepEqual(queue.calls, [
+    ["addBulk", bulk],
+    ["getJob", "job-1"],
+    ["getJobs", ["waiting"], 2, 3, true],
+    ["getPrioritized", 1, 2],
+  ]);
+});
+
+test("maps commands that require an existing job", async () => {
+  const job = createJobStub();
+  const queue = createRecordingQueue({ getJob: job });
+
+  assert.equal(
+    await dispatchCommand(queue, { cmd: "getJobState", jobId: "job-1" }),
+    "failed",
+  );
+  assert.equal(
+    await dispatchCommand(queue, { cmd: "removeJob", jobId: "job-1" }),
+    true,
+  );
+  assert.deepEqual(
+    await dispatchCommand(queue, {
+      cmd: "retryJob",
+      jobId: "job-1",
+      state: "failed",
+    }),
+    { id: "job-1", name: "example" },
+  );
+  await dispatchCommand(queue, {
+    cmd: "changeDelay",
+    jobId: "job-1",
+    delay: 500,
+  });
+  await dispatchCommand(queue, { cmd: "promoteJob", jobId: "job-1" });
+  await dispatchCommand(queue, {
+    cmd: "changePriority",
+    jobId: "job-1",
+    priority: 4,
+    lifo: true,
+  });
+
+  assert.deepEqual(job.calls, [
+    ["getState"],
+    ["remove"],
+    ["retry", "failed"],
+    ["changeDelay", 500],
+    ["promote"],
+    ["changePriority", { priority: 4, lifo: true }],
+  ]);
+});
+
+test("required-job commands reject missing ids and jobs", async () => {
+  await assert.rejects(
+    () => dispatchCommand(createRecordingQueue(), { cmd: "removeJob" }),
+    /msg\.jobId is required/,
+  );
+  await assert.rejects(
+    () =>
+      dispatchCommand(createRecordingQueue({ getJob: undefined }), {
+        cmd: "removeJob",
+        jobId: "missing",
+      }),
+    /Job not found: missing/,
+  );
 });
 
 test("rejects unsupported command names", async () => {
