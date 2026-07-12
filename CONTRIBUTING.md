@@ -16,7 +16,7 @@ npm test
 
 ## Change Rules
 
-- Keep BullMQ pinned to exactly `5.78.0`.
+- Keep BullMQ pinned to exactly `5.80.2`.
 - Do not reintroduce `bull` or `sprintf-js`.
 - Preserve legacy node types: `bull-queue-server`, `bull cmd`, and `bull run`.
 - Keep secrets in Node-RED credentials or environment variables, never in examples, docs, logs, or test fixtures.
