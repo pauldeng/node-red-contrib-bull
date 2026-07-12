@@ -2,6 +2,11 @@
 
 All notable changes to this package are documented here.
 
+## Unreleased
+
+- Updated BullMQ from 5.78.0 to 5.80.2, including the upstream Job Scheduler offset fix.
+- Expanded command-dispatch regression coverage and corrected the `getDelayed` BullMQ call signature.
+
 ## 1.0.1 - 2026-06-10
 
 - Fixed Node-RED shutdown and redeploy hanging while Redis is unreachable: graceful closes are now capped at one second before the underlying sockets are force-disconnected, so Ctrl-C exits promptly. This works around BullMQ `QueueEvents.close()` blocking forever on a connection that never became ready.
