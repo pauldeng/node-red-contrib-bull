@@ -2,10 +2,14 @@
 
 All notable changes to this package are documented here.
 
-## Unreleased
+## 1.0.2 - 2026-07-13
 
-- Updated BullMQ from 5.78.0 to 5.80.2, including the upstream Job Scheduler offset fix.
+- Updated BullMQ from 5.78.0 to 5.80.2, including the upstream Job Scheduler offset fix, while aligning ioredis with BullMQ's tested 5.10.1 release.
+- Fixed manual acknowledgements that settle before the worker starts waiting, preventing jobs from remaining active indefinitely.
+- Simplified full queue cleanup through BullMQ's unlimited clean operation and added clear validation for incomplete global rate-limit commands.
+- Rejected Cluster and MemoryDB prefixes without a Redis hash tag such as `{bull}`.
 - Expanded command-dispatch regression coverage and corrected the `getDelayed` BullMQ call signature.
+- Updated Node-RED development tooling, Playwright, Prettier, and GitHub Actions dependencies.
 
 ## 1.0.1 - 2026-06-10
 
