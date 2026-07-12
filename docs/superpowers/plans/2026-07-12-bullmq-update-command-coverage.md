@@ -6,7 +6,7 @@
 
 **Architecture:** Keep `dispatchCommand(queue, msg)` as the single explicit command boundary. Exercise it with small recording queue/job fakes in the existing `node:test` suite, fix only API mismatches exposed by those tests, then update the exact dependency pin and maintained version documentation.
 
-**Tech Stack:** CommonJS, Node.js `node:test`, BullMQ `5.80.2`, ioredis `5.11.1`, Node-RED 4.1/5.x, npm lockfile v3.
+**Tech Stack:** CommonJS, Node.js `node:test`, BullMQ `5.80.2`, ioredis `5.10.1`, Node-RED 4.1/5.x, npm lockfile v3.
 
 ## Global Constraints
 
@@ -450,7 +450,7 @@ git commit -m "chore: update BullMQ to 5.80.2"
 - Consumes: Tasks 1-3.
 - Produces: release-quality verification evidence.
 
-- [ ] **Step 1: Run formatting**
+- [x] **Step 1: Run formatting**
 
 ```sh
 npm run format:check
@@ -458,7 +458,7 @@ npm run format:check
 
 Expected: all files match Prettier style. If not, run `npm exec -- prettier --write` only on changed files and commit the mechanical result.
 
-- [ ] **Step 2: Run fast suites on every supported Node line**
+- [x] **Step 2: Run fast suites on every supported Node line**
 
 ```sh
 npm test
@@ -469,7 +469,7 @@ npx --yes node@24 --test test/*.test.js
 
 Expected: zero failures; Redis integration files remain skipped in the fast suite.
 
-- [ ] **Step 3: Run editor, package, and audit gates**
+- [x] **Step 3: Run editor, package, and audit gates**
 
 ```sh
 npm run test:playwright
@@ -481,13 +481,13 @@ git diff --check
 
 Expected: zero failures. `node-red-dev` may warn that the exact BullMQ pin is not the newest only if a newer release appears after `5.80.2`; verify before changing it.
 
-- [ ] **Step 4: Run standalone Redis integration**
+- [x] **Step 4: Run standalone Redis integration**
 
 Run `npm run test:integration` with a temporary Redis executable on `PATH`, as documented in the completed review session.
 
 Expected: all six integration tests pass.
 
-- [ ] **Step 5: Attempt Docker topology verification**
+- [x] **Step 5: Attempt Docker topology verification**
 
 ```sh
 npm run test:deployments
@@ -495,7 +495,7 @@ npm run test:deployments
 
 Expected when Docker is accessible: all configured standalone, Cluster, and Sentinel topologies pass. If the daemon socket is still denied, record the exact external error without changing code.
 
-- [ ] **Step 6: Verify final branch state**
+- [x] **Step 6: Verify final branch state**
 
 ```sh
 git status --short --branch

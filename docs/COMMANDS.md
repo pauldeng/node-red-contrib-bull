@@ -82,7 +82,7 @@ Legacy lookup/removal is exact-id based.
 - `getRateLimitTtl`
 - `removeRateLimitKey`
 
-`setGlobalRateLimit` reads `msg.max` and `msg.duration`; the documented `{ max, duration }` object in `msg.payload` is also accepted.
+`setGlobalRateLimit` requires `msg.max` and `msg.duration`; the documented `{ max, duration }` object in `msg.payload` is also accepted.
 
 ## Logs And Metrics
 
