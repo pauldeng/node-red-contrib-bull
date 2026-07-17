@@ -197,3 +197,11 @@ test("help links BullMQ API references to official API docs", () => {
     assert.match(html, new RegExp(link.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
 });
+
+test("worker fields use positive integer and paired limiter validation", () => {
+  assert.match(html, /function positiveInteger\(value\)/);
+  assert.match(html, /function optionalPositivePair\(value, otherProperty\)/);
+  assert.match(html, /concurrency:\s*\{[^}]*validate: positiveInteger/);
+  assert.match(html, /limiterMax:\s*\{[^}]*validate:/);
+  assert.match(html, /limiterDuration:\s*\{[^}]*validate:/);
+});

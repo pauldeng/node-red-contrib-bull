@@ -536,3 +536,65 @@ test("config node createWorker does not attach its own error listener", async ()
     await worker.close().catch(() => {});
   }
 });
+
+function constructRunNode(config) {
+  const createdOptions = [];
+  const worker = new EventEmitter();
+  worker.close = async function close() {};
+  const queueConfig = {
+    config: { queueName: "runcasts" },
+    register() {},
+    createWorker(processor, options) {
+      createdOptions.push(options);
+      return worker;
+    },
+    getQueue() {
+      return {};
+    },
+    async releaseResource() {},
+    deregister(node, done) {
+      done();
+    },
+  };
+  const RED = createRED({ getNode: () => queueConfig });
+  registerBullMQNodes(RED);
+  const node = {};
+  RED.registered.get("bull run").constructor.call(node, {
+    queue: "queue",
+    completionMode: "immediate",
+    ...config,
+  });
+  return { createdOptions, node };
+}
+
+test("bull run applies only a complete positive limiter pair", () => {
+  assert.equal(constructRunNode({}).createdOptions[0].limiter, undefined);
+  assert.deepEqual(
+    constructRunNode({ limiterMax: "2", limiterDuration: "1000" })
+      .createdOptions[0].limiter,
+    { max: 2, duration: 1000 },
+  );
+});
+
+test("bull run rejects invalid concurrency and limiter values", () => {
+  const cases = [
+    [{ limiterMax: "2", limiterDuration: "" }, /set together/i],
+    [{ limiterMax: "", limiterDuration: "1000" }, /set together/i],
+    [
+      { limiterMax: "0", limiterDuration: "1000" },
+      /Limiter Max.*positive integer/i,
+    ],
+    [
+      { limiterMax: "2.5", limiterDuration: "1000" },
+      /Limiter Max.*positive integer/i,
+    ],
+    [
+      { limiterMax: "2", limiterDuration: "-1" },
+      /Limiter Duration.*positive integer/i,
+    ],
+    [{ concurrency: "0" }, /Concurrency.*positive integer/i],
+  ];
+  for (const [config, error] of cases) {
+    assert.throws(() => constructRunNode(config), error);
+  }
+});

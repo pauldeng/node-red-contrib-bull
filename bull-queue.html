@@ -315,26 +315,52 @@ return msg;</pre>
 </script>
 
 <script type="text/javascript">
-  RED.nodes.registerType("bull run", {
-    color: "#ffffff",
-    category: "function",
-    defaults: {
-      name: { value: "" },
-      queue: { type: "bull-queue-server", required: true },
-      completionMode: { value: "immediate" },
-      ackTimeout: { value: 300000, validate: RED.validators.number() },
-      concurrency: { value: 1, validate: RED.validators.number() },
-      limiterMax: { value: "" },
-      limiterDuration: { value: "" }
-    },
-    inputs: 0,
-    outputs: 1,
-    align: "left",
-    icon: "bull_icon.png",
-    label: function() {
-      return this.name || "bull run";
+  (function() {
+    function positiveInteger(value) {
+      var parsed = Number(value);
+      return value !== "" && Number.isInteger(parsed) && parsed > 0;
     }
-  });
+
+    function optionalPositivePair(value, otherProperty) {
+      var input = $("#node-input-" + otherProperty);
+      var other = input.length ? input.val() : this[otherProperty];
+      return (
+        ((value === "" || value == null) && (other === "" || other == null)) ||
+        (positiveInteger(value) && positiveInteger(other))
+      );
+    }
+
+    RED.nodes.registerType("bull run", {
+      color: "#ffffff",
+      category: "function",
+      defaults: {
+        name: { value: "" },
+        queue: { type: "bull-queue-server", required: true },
+        completionMode: { value: "immediate" },
+        ackTimeout: { value: 300000, validate: RED.validators.number() },
+        concurrency: { value: 1, validate: positiveInteger },
+        limiterMax: {
+          value: "",
+          validate: function(value) {
+            return optionalPositivePair.call(this, value, "limiterDuration");
+          }
+        },
+        limiterDuration: {
+          value: "",
+          validate: function(value) {
+            return optionalPositivePair.call(this, value, "limiterMax");
+          }
+        }
+      },
+      inputs: 0,
+      outputs: 1,
+      align: "left",
+      icon: "bull_icon.png",
+      label: function() {
+        return this.name || "bull run";
+      }
+    });
+  })();
 </script>
 
 <script type="text/html" data-template-name="bull job">

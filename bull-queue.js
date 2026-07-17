@@ -151,13 +151,17 @@ function nodeDone(node, done, err, msg) {
   }
 }
 
-function parsePositiveInteger(value, defaultValue) {
-  if (value === undefined || value === null || value === "") {
+function isPresent(value) {
+  return value !== undefined && value !== null && value !== "";
+}
+
+function parsePositiveInteger(value, defaultValue, field = "Value") {
+  if (!isPresent(value)) {
     return defaultValue;
   }
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 1) {
-    throw new Error(`Expected a positive integer, got ${value}`);
+    throw new Error(`${field} must be a positive integer`);
   }
   return parsed;
 }
@@ -404,12 +408,21 @@ module.exports = function registerBullMQNodes(RED) {
     node.bullQueue.register(node);
 
     const workerOptions = {
-      concurrency: parsePositiveInteger(n.concurrency, 1),
+      concurrency: parsePositiveInteger(n.concurrency, 1, "Concurrency"),
     };
-    if (n.limiterMax && n.limiterDuration) {
+    const hasLimiterMax = isPresent(n.limiterMax);
+    const hasLimiterDuration = isPresent(n.limiterDuration);
+    if (hasLimiterMax !== hasLimiterDuration) {
+      throw new Error("Limiter Max and Limiter Duration must be set together");
+    }
+    if (hasLimiterMax) {
       workerOptions.limiter = {
-        max: parsePositiveInteger(n.limiterMax),
-        duration: parsePositiveInteger(n.limiterDuration),
+        max: parsePositiveInteger(n.limiterMax, undefined, "Limiter Max"),
+        duration: parsePositiveInteger(
+          n.limiterDuration,
+          undefined,
+          "Limiter Duration"
+        ),
       };
     }
 
