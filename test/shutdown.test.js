@@ -76,7 +76,11 @@ async function settleWithin(promise, ms) {
 }
 
 function forceCleanup(server) {
-  for (const resource of server.resources || []) {
+  const resources =
+    server.resources instanceof Map
+      ? Array.from(server.resources.entries()).flat()
+      : Array.from(server.resources || []);
+  for (const resource of resources) {
     try {
       if (resource.blockingConnection) {
         resource.blockingConnection.disconnect();
@@ -228,6 +232,115 @@ test("bull flow close settles promptly when Redis is unreachable", async () => {
     assert.equal(serverResult, "closed");
   } finally {
     forceCleanup(server);
+  }
+});
+
+test("runtime partial closes release raw Redis connections", async () => {
+  let server;
+  const RED = createRED({ getNode: () => server });
+  registerBullMQNodes(RED);
+  server = buildServerNode(RED);
+  const runNode = {};
+  const eventsNode = {};
+  const flowNode = {};
+  const runtimeNodes = [runNode, eventsNode, flowNode];
+
+  try {
+    RED.registered.get("bull run").constructor.call(runNode, {
+      queue: "queue",
+      completionMode: "immediate",
+    });
+    RED.registered
+      .get("bull events")
+      .constructor.call(eventsNode, { queue: "queue" });
+    RED.registered
+      .get("bull flow")
+      .constructor.call(flowNode, { queue: "queue" });
+    await delay(200);
+
+    assert.ok(server.resources instanceof Map);
+    const ownedResources = [
+      {
+        owner: runNode.worker,
+        connection: server.resources.get(runNode.worker),
+      },
+      {
+        owner: eventsNode.queueEvents,
+        connection: server.resources.get(eventsNode.queueEvents),
+      },
+      {
+        owner: flowNode.flowProducer,
+        connection: server.resources.get(flowNode.flowProducer),
+      },
+    ];
+    for (const { connection } of ownedResources) {
+      assert.ok(connection, "factory must track the owner's raw connection");
+    }
+
+    await Promise.all(runtimeNodes.map(invokeClose));
+    for (const { owner } of ownedResources) {
+      assert.equal(server.resources.has(owner), false);
+    }
+
+    let attemptsAfterClose = 0;
+    for (const { connection } of ownedResources) {
+      connection.on("reconnecting", () => {
+        attemptsAfterClose += 1;
+      });
+      connection.on("connect", () => {
+        attemptsAfterClose += 1;
+      });
+    }
+    await delay(2200);
+    assert.equal(attemptsAfterClose, 0);
+  } finally {
+    for (const runtimeNode of runtimeNodes) {
+      await settleWithin(invokeClose(runtimeNode), CLOSE_DEADLINE_MS);
+    }
+    await settleWithin(invokeClose(server), CLOSE_DEADLINE_MS);
+    forceCleanup(server);
+  }
+});
+
+test("config close starts independent resource pairs concurrently", async () => {
+  const RED = createRED();
+  registerBullMQNodes(RED);
+  const server = buildServerNode(RED);
+  const started = [];
+  const ownerGate = new EventEmitter();
+  const connectionGate = new EventEmitter();
+  const resource = (name, gate) => ({
+    async close() {
+      started.push(name);
+      await once(gate, "release");
+    },
+  });
+  server.resources = new Map([
+    [resource("owner-a", ownerGate), resource("connection-a", connectionGate)],
+    [resource("owner-b", ownerGate), resource("connection-b", connectionGate)],
+  ]);
+
+  const closing = invokeClose(server);
+  try {
+    await delay(0);
+    assert.deepEqual(started.slice().sort(), ["owner-a", "owner-b"]);
+    ownerGate.emit("release");
+    await delay(0);
+    assert.deepEqual(started.slice().sort(), [
+      "connection-a",
+      "connection-b",
+      "owner-a",
+      "owner-b",
+    ]);
+    connectionGate.emit("release");
+    await closing;
+  } finally {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      ownerGate.emit("release");
+      connectionGate.emit("release");
+      await delay(0);
+    }
+    await closing;
   }
 });
 

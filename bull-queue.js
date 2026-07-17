@@ -47,22 +47,22 @@ const DEFAULT_EVENTS = [
 // an unreachable Redis server.
 const CLOSE_GRACE_MS = 1000;
 
-async function settleWithin(promise, ms) {
-  let settled = false;
-  (async () => {
-    try {
-      await promise;
-    } catch (err) {
-      // a failed graceful close still counts as settled
-    }
-    settled = true;
-  })();
-
-  const deadline = Date.now() + ms;
-  while (!settled && Date.now() < deadline) {
-    await sleep(25);
+async function settled(promise) {
+  try {
+    await promise;
+  } catch (err) {
+    // a failed graceful close still counts as settled
   }
-  return settled ? "settled" : "timeout";
+  return "settled";
+}
+
+async function timedOut(ms) {
+  await sleep(ms);
+  return "timeout";
+}
+
+async function settleWithin(promise, ms) {
+  return await Promise.race([settled(promise), timedOut(ms)]);
 }
 
 function disconnectClient(client) {
@@ -119,6 +119,23 @@ async function closeResource(resource) {
   // sockets when it does not settle in time.
   if ((await settleWithin(resource.close(), CLOSE_GRACE_MS)) === "timeout") {
     forceDisconnect(resource);
+  }
+}
+
+async function closeResourcePair(owner, connection) {
+  let firstError;
+  try {
+    await closeResource(owner);
+  } catch (err) {
+    firstError = err;
+  }
+  try {
+    await closeResource(connection);
+  } catch (err) {
+    firstError ||= err;
+  }
+  if (firstError) {
+    throw firstError;
   }
 }
 
@@ -203,7 +220,7 @@ module.exports = function registerBullMQNodes(RED) {
     const node = this;
 
     node.users = {};
-    node.resources = new Set();
+    node.resources = new Map();
     node.config = normalizeQueueConfig(n, node.credentials || {});
     node.queue = null;
     node.producerConnection = null;
@@ -229,17 +246,27 @@ module.exports = function registerBullMQNodes(RED) {
       const descriptor = buildRedisDescriptor(node.config, role);
       const connection = createRedisConnection(descriptor, IORedis);
       attachErrorListener(connection, owner);
-      node.resources.add(connection);
       return connection;
+    };
+
+    node.releaseResource = async function releaseResource(owner) {
+      if (!node.resources.has(owner)) {
+        return;
+      }
+      const connection = node.resources.get(owner);
+      node.resources.delete(owner);
+      await closeResourcePair(owner, connection);
     };
 
     node.getQueue = function getQueue() {
       if (!node.queue) {
         node.producerConnection = node.createConnection("producer");
+        node.producerConnection.setMaxListeners(0);
         node.queue = new Queue(
           node.config.queueName,
           buildBullMQOptions(node.config, node.producerConnection)
         );
+        node.resources.set(node.queue, node.producerConnection);
         attachErrorListener(node.queue, node);
       }
       return node.queue;
@@ -261,7 +288,7 @@ module.exports = function registerBullMQNodes(RED) {
         ...buildBullMQOptions(node.config, connection),
         ...options,
       });
-      node.resources.add(worker);
+      node.resources.set(worker, connection);
       return worker;
     };
 
@@ -271,7 +298,7 @@ module.exports = function registerBullMQNodes(RED) {
         node.config.queueName,
         buildBullMQOptions(node.config, connection)
       );
-      node.resources.add(queueEvents);
+      node.resources.set(queueEvents, connection);
       return queueEvents;
     };
 
@@ -280,19 +307,19 @@ module.exports = function registerBullMQNodes(RED) {
       const flowProducer = new FlowProducer(
         buildBullMQOptions(node.config, connection)
       );
-      node.resources.add(flowProducer);
+      node.resources.set(flowProducer, connection);
       return flowProducer;
     };
 
     node.on("close", async function onClose(removed, done) {
       try {
-        if (node.queue) {
-          await closeResource(node.queue);
-        }
-        const resources = Array.from(node.resources).reverse();
-        for (const resource of resources) {
-          await closeResource(resource);
-        }
+        const resources = Array.from(node.resources.entries()).reverse();
+        node.resources.clear();
+        await Promise.all(
+          resources.map(([owner, connection]) =>
+            closeResourcePair(owner, connection)
+          )
+        );
         node.status({});
         done();
       } catch (err) {
@@ -424,7 +451,7 @@ module.exports = function registerBullMQNodes(RED) {
         new Error("BullMQ run node closed before acknowledgement")
       );
       try {
-        await closeResource(node.worker);
+        await node.bullQueue.releaseResource(node.worker);
         node.bullQueue.deregister(node, () => {});
         done();
       } catch (err) {
@@ -555,7 +582,7 @@ module.exports = function registerBullMQNodes(RED) {
 
     node.on("close", async function onClose(removed, done) {
       try {
-        await closeResource(node.queueEvents);
+        await node.bullConn.releaseResource(node.queueEvents);
         node.bullConn.deregister(node, () => {});
         done();
       } catch (err) {
@@ -608,7 +635,7 @@ module.exports = function registerBullMQNodes(RED) {
 
     node.on("close", async function onClose(removed, done) {
       try {
-        await closeResource(node.flowProducer);
+        await node.bullConn.releaseResource(node.flowProducer);
         node.bullConn.deregister(node, () => {});
         done();
       } catch (err) {

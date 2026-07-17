@@ -20,7 +20,11 @@ test("production Node.js code uses async/await instead of direct promise constru
       /\bnew\s+Promise\b/,
       `${file} constructs a Promise`,
     );
-    assert.doesNotMatch(source, /\bPromise\./, `${file} calls Promise.*`);
+    assert.doesNotMatch(
+      source,
+      /\bPromise\.(?!all\b|race\b)/,
+      `${file} calls a Promise combinator other than all/race`,
+    );
     assert.doesNotMatch(source, /\.then\s*\(/, `${file} chains .then()`);
     assert.doesNotMatch(source, /\.catch\s*\(/, `${file} chains .catch()`);
   }

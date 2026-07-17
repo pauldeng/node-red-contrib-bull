@@ -502,6 +502,7 @@ test("config node exposes the shared producer connection", async () => {
   try {
     assert.ok(connection, "producer connection must be created on demand");
     assert.equal(connection, node.producerConnection);
+    assert.equal(connection.getMaxListeners(), 0);
     assert.ok(node.queue, "the shared queue must be created with it");
     assert.equal(node.getProducerConnection(), connection);
   } finally {
