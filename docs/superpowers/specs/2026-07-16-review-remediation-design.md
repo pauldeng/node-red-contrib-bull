@@ -12,6 +12,9 @@ legacy Node-RED contracts, and update the exact runtime dependency pins to:
 
 The npm registry was checked on 2026-07-16. BullMQ `5.80.5` depends on ioredis
 `5.11.1`, so the direct ioredis pin keeps one deduplicated installed copy.
+BullMQ `5.80.6` became the registry `latest` tag on 2026-07-17; this design keeps
+the explicitly requested `5.80.5` pin and does not describe it as the current
+latest release.
 
 ## Constraints
 
@@ -38,6 +41,8 @@ The npm registry was checked on 2026-07-16. BullMQ `5.80.5` depends on ioredis
   warning threshold when many `bull cmd` nodes use one config node.
 - Endpoint parsing mishandles bare and URL-form IPv6 and silently discards
   credentials embedded in Redis URLs.
+- A `rediss://` endpoint can currently be combined with the wrong explicit TLS
+  setting and silently attempt a plaintext connection.
 - A worker limiter is silently ignored when only one limiter field is configured.
 - The editor should hide Ack Timeout outside manual completion mode, hide Database
   for Cluster/MemoryDB, and use a neutral queue placeholder.
@@ -71,7 +76,7 @@ Replace the mixed resource `Set` with one ownership map:
 | shared `Queue` | producer connection |
 | `Worker` | worker connection |
 | `QueueEvents` | original events connection |
-| `FlowProducer` | producer connection |
+| `FlowProducer` | dedicated producer-role connection |
 
 The config node will expose one release operation for runtime nodes. Releasing an
 owner will:
@@ -108,7 +113,7 @@ would add state and lifecycle code without changing behavior.
 Use Node's `URL` and `node:net` support instead of extending the current regular
 expression.
 
-Accepted forms:
+Accepted forms for Cluster and Sentinel endpoint lists:
 
 - `host`
 - `host:port`
@@ -119,8 +124,17 @@ Accepted forms:
 
 URL credentials must be rejected with a clear error. Authentication remains in
 the config node's credential fields; it must never be silently extracted from or
-discarded from an endpoint string. The URL scheme does not override the explicit
-TLS checkbox.
+discarded from an endpoint string.
+
+URL schemes do not override explicit TLS settings. When a URL includes a scheme,
+the scheme and the applicable setting must agree or deployment fails:
+
+- Cluster `redis://` / `rediss://` URLs are checked against `tls`.
+- Sentinel discovery `redis://` / `rediss://` URLs are checked against
+  `sentinelTls`; the separate `tls` setting still controls data-node connections.
+
+Host and `host:port` forms carry no TLS intent, so the applicable checkbox remains
+the sole source of truth for those forms.
 
 ### Worker Limiter Validation
 
@@ -135,10 +149,11 @@ Runtime validation remains necessary for imported or hand-edited flows.
 
 ### Dependency Update
 
-Update the exact package and lockfile pins, package-contract assertions, maintained
-version references, runtime pin comment, release guide, contributor instructions,
-README, migration guide, and changelog. Do not alter the completed 2026-07-12
-design and plan, which are historical records of the earlier update.
+Update the exact package and lockfile pins, `test/package-contract.test.js`,
+`test/docs-contract.test.js`, `CLAUDE.md` (and therefore its `AGENTS.md` symlink),
+maintained version references, runtime pin comment, release guide, contributor
+instructions, README, migration guide, and changelog. Do not alter the completed
+2026-07-12 design and plan, which are historical records of the earlier update.
 
 ## Editor And Help Design
 
@@ -177,6 +192,8 @@ Static editor contract tests remain useful for field and help-text coverage.
   connection while runtime nodes report their own connections.
 - `docs/COMMANDS.md` and `docs/NODE_GUIDE.md`: document `msg.command` as a legacy
   alias while continuing to recommend `msg.cmd`.
+- `CHANGELOG.md`: identify URL-credential rejection as a compatibility change and
+  tell users to move credentials into the config node's credential fields.
 
 ## Error Handling
 
@@ -186,6 +203,8 @@ Static editor contract tests remain useful for field and help-text coverage.
   while all already-started close operations continue.
 - Endpoint URLs containing a username or password fail before a Redis connection
   is created.
+- An explicit endpoint URL scheme that contradicts the applicable Cluster or
+  Sentinel TLS setting fails before a Redis connection is created.
 - Incomplete or invalid limiter configuration fails with field-specific text.
 
 ## Test Strategy
@@ -198,17 +217,18 @@ Follow red-green TDD with the smallest focused test for each behavior:
    reconnection for `bull run`, `bull events`, and `bull flow`.
 3. A deterministic fake-resource test proves independent config resources begin
    closing concurrently.
-4. Registration tests prove the shared producer connection permits more than ten
-   correctly cleaned-up `bull cmd` listeners without warnings.
+4. Registration tests directly assert the shared producer connection has an
+   unlimited listener cap and that every `bull cmd` listener is removed on close;
+   no process-global warning capture is needed.
 5. Connection tests cover hostname, bracketed and bare IPv6, credential-free URLs,
-   and rejection of URL credentials.
+   rejection of URL credentials, and topology-specific URL-scheme/TLS mismatches.
 6. Runtime and editor tests cover blank, complete, incomplete, non-integer, zero,
    and negative limiter configurations.
 7. Editor contract and Playwright tests cover the corrected help example,
    placeholder, and live row visibility.
 8. Documentation contract tests pin the corrected security and inventory wording.
 
-Final verification:
+Mandatory final verification:
 
 ```sh
 npm test
