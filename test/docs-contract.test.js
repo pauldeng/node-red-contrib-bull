@@ -34,7 +34,7 @@ test("agent and user documentation files exist", () => {
 test("README documents BullMQ migration, supported deployments, and unsupported features", () => {
   const readme = read("README.md");
   for (const text of [
-    "BullMQ 5.80.2",
+    "BullMQ 5.80.6",
     "Node-RED 4.1",
     "Node.js 18",
     "@pauldeng/node-red-contrib-bullmq",

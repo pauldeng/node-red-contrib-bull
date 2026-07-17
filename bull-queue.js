@@ -86,7 +86,7 @@ function forceDisconnect(resource) {
   }
   // BullMQ resource. Its public disconnect() awaits a connection promise that
   // never settles while Redis is unreachable, so reach for the underlying
-  // ioredis clients directly (BullMQ is pinned to exactly 5.80.2).
+  // ioredis clients directly (BullMQ is pinned to exactly 5.80.6).
   if (resource.connection) {
     disconnectClient(resource.connection._client);
   }

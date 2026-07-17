@@ -2,6 +2,10 @@
 
 All notable changes to this package are documented here.
 
+## Unreleased
+
+- Updated BullMQ to 5.80.6 and aligned the exact ioredis pin with BullMQ's 5.11.1 dependency.
+
 ## 1.0.2 - 2026-07-13
 
 - Updated BullMQ from 5.78.0 to 5.80.2, including the upstream Job Scheduler offset fix, while aligning ioredis with BullMQ's tested 5.10.1 release.
