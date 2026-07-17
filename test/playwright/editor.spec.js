@@ -65,7 +65,16 @@ test("loads BullMQ config and worker editor templates", async ({ page }) => {
 
 test("toggles deployment and completion-specific rows", async ({ page }) => {
   await page.goto("/");
-  await page.waitForFunction(() => window.RED && RED.nodes.getType("bull run"));
+  await page.waitForFunction(() => {
+    const loader = document.querySelector("#red-ui-loading-progress");
+    return (
+      window.RED &&
+      RED.nodes.getType("bull run") &&
+      RED.workspaces.active() &&
+      loader &&
+      getComputedStyle(loader).display === "none"
+    );
+  });
 
   await page.evaluate(() => {
     const definition = RED.nodes.getType("bull run");
