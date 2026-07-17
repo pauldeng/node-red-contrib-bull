@@ -7,14 +7,12 @@ Date: 2026-07-16
 Address the actionable findings in `REVIEW-2026-07-16.md`, preserve the package's
 legacy Node-RED contracts, and update the exact runtime dependency pins to:
 
-- `bullmq` `5.80.5`
+- `bullmq` `5.80.6`
 - `ioredis` `5.11.1`
 
-The npm registry was checked on 2026-07-16. BullMQ `5.80.5` depends on ioredis
-`5.11.1`, so the direct ioredis pin keeps one deduplicated installed copy.
-BullMQ `5.80.6` became the registry `latest` tag on 2026-07-17; this design keeps
-the explicitly requested `5.80.5` pin and does not describe it as the current
-latest release.
+The npm registry was checked on 2026-07-17. BullMQ `5.80.6` is the current
+`latest` release and depends on ioredis `5.11.1`, so the direct ioredis pin keeps
+one deduplicated installed copy.
 
 ## Constraints
 
@@ -211,7 +209,7 @@ Static editor contract tests remain useful for field and help-text coverage.
 
 Follow red-green TDD with the smallest focused test for each behavior:
 
-1. Package tests fail until BullMQ `5.80.5` and ioredis `5.11.1` are pinned and
+1. Package tests fail until BullMQ `5.80.6` and ioredis `5.11.1` are pinned and
    deduplicated.
 2. Shutdown tests prove partial close removes both tracked resources and stops
    reconnection for `bull run`, `bull events`, and `bull flow`.
