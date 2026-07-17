@@ -27,8 +27,10 @@ fs.writeFileSync(
   flowFile: "flows.json",
   credentialSecret: false,
   editorTheme: {
+    tours: false,
     projects: { enabled: false }
   },
+  telemetry: { enabled: false },
   logging: {
     console: { level: "error" }
   }

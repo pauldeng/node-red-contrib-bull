@@ -205,3 +205,10 @@ test("worker fields use positive integer and paired limiter validation", () => {
   assert.match(html, /limiterMax:\s*\{[^}]*validate:/);
   assert.match(html, /limiterDuration:\s*\{[^}]*validate:/);
 });
+
+test("editor hides irrelevant rows and teaches configured completion", () => {
+  assert.match(html, /id="node-config-input-name" placeholder="email-jobs"/);
+  assert.match(html, /class="form-row bull-db-row"/);
+  assert.match(html, /class="form-row bull-ack-timeout-row"/);
+  assert.match(helpBlock("bull job"), /delete msg\.cmd;/);
+});

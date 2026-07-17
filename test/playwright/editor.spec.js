@@ -62,3 +62,47 @@ test("loads BullMQ config and worker editor templates", async ({ page }) => {
     expect(runTemplate).toContain(id);
   }
 });
+
+test("toggles deployment and completion-specific rows", async ({ page }) => {
+  await page.goto("/");
+  await page.waitForFunction(() => window.RED && RED.nodes.getType("bull run"));
+
+  await page.evaluate(() => {
+    const definition = RED.nodes.getType("bull run");
+    const node = {
+      id: RED.nodes.id(),
+      type: "bull run",
+      z: RED.workspaces.active(),
+      _def: definition,
+      name: "",
+      queue: "",
+      completionMode: "immediate",
+      ackTimeout: 300000,
+      concurrency: 1,
+      limiterMax: "",
+      limiterDuration: "",
+      inputs: definition.inputs,
+      outputs: definition.outputs,
+      x: 100,
+      y: 100,
+      wires: [[]],
+    };
+    RED.nodes.add(node);
+    RED.editor.edit(node);
+  });
+  await expect(page.locator("#node-input-completionMode")).toBeVisible();
+  await expect(page.locator(".bull-ack-timeout-row")).toBeHidden();
+  await page.locator("#node-input-completionMode").selectOption("manual");
+  await expect(page.locator(".bull-ack-timeout-row")).toBeVisible();
+  await page.locator("#node-dialog-cancel").click();
+
+  await page.evaluate(() => {
+    RED.editor.editConfig("", "bull-queue-server", "_ADD_");
+  });
+  await expect(page.locator("#node-config-input-deployment")).toBeVisible();
+  await page.locator("#node-config-input-deployment").selectOption("cluster");
+  await expect(page.locator(".bull-db-row")).toBeHidden();
+  await page.locator("#node-config-input-deployment").selectOption("sentinel");
+  await expect(page.locator(".bull-db-row")).toBeVisible();
+  await page.locator("#node-config-dialog-cancel").click();
+});

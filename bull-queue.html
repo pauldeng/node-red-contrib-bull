@@ -1,7 +1,7 @@
 <script type="text/html" data-template-name="bull-queue-server">
   <div class="form-row">
     <label for="node-config-input-name"><i class="fa fa-tasks"></i> Queue</label>
-    <input type="text" id="node-config-input-name" placeholder="basecasts">
+    <input type="text" id="node-config-input-name" placeholder="email-jobs">
   </div>
   <div class="form-row">
     <label for="node-config-input-deployment"><i class="fa fa-server"></i> Deployment</label>
@@ -31,7 +31,7 @@
     <label for="node-config-input-sentinelMasterName"><i class="fa fa-tag"></i> Master</label>
     <input type="text" id="node-config-input-sentinelMasterName" placeholder="mymaster">
   </div>
-  <div class="form-row">
+  <div class="form-row bull-db-row">
     <label for="node-config-input-db"><i class="fa fa-database"></i> Database</label>
     <input type="number" id="node-config-input-db" placeholder="0">
   </div>
@@ -95,6 +95,7 @@
       $(".bull-single-row").toggle(deployment === "single");
       $(".bull-cluster-row").toggle(deployment === "cluster");
       $(".bull-sentinel-row").toggle(deployment === "sentinel");
+      $(".bull-db-row").toggle(deployment !== "cluster");
       $(".bull-tls-row").toggle($("#node-config-input-tls").is(":checked"));
     }
 
@@ -269,7 +270,7 @@ return msg;</pre>
       <option value="manual">Manual acknowledgement</option>
     </select>
   </div>
-  <div class="form-row">
+  <div class="form-row bull-ack-timeout-row">
     <label for="node-input-ackTimeout"><i class="fa fa-clock-o"></i> Ack Timeout</label>
     <input type="number" id="node-input-ackTimeout" placeholder="300000">
   </div>
@@ -316,6 +317,12 @@ return msg;</pre>
 
 <script type="text/javascript">
   (function() {
+    function updateBullRunRows() {
+      $(".bull-ack-timeout-row").toggle(
+        $("#node-input-completionMode").val() === "manual"
+      );
+    }
+
     function positiveInteger(value) {
       var parsed = Number(value);
       return value !== "" && Number.isInteger(parsed) && parsed > 0;
@@ -358,6 +365,10 @@ return msg;</pre>
       icon: "bull_icon.png",
       label: function() {
         return this.name || "bull run";
+      },
+      oneditprepare: function() {
+        $("#node-input-completionMode").on("change", updateBullRunRows);
+        updateBullRunRows();
       }
     });
   })();
@@ -412,7 +423,11 @@ return msg;</pre>
   <pre>msg.cmd = "progress";
 msg.progress = 50;
 return msg;</pre>
-  <p>Wire that message into another <code>bull job</code> node with <b>Action</b> <code>complete</code>, or set:</p>
+  <p>To use another <code>bull job</code> node with configured <b>Action</b> <code>complete</code>, pass the progress output through a Function node that removes the per-message override:</p>
+  <pre>delete msg.cmd;
+msg.payload = { ok: true };
+return msg;</pre>
+  <p>Alternatively, override the downstream action explicitly:</p>
   <pre>msg.cmd = "complete";
 msg.payload = { ok: true };
 return msg;</pre>
