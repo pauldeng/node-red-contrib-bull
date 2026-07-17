@@ -66,11 +66,11 @@ msg.jobopts = {
 return msg;
 ```
 
-The scheduler id is `msg.schedulerId` when present, otherwise `msg.jobopts.jobId`. `repeat.cron` is translated to `repeat.pattern`; conflicting `cron` and `pattern` values are rejected.
+When adding a legacy repeat job, the scheduler id is `msg.schedulerId` when present, otherwise `msg.jobopts.jobId`. `repeat.cron` is translated to `repeat.pattern`; conflicting `cron` and `pattern` values are rejected. Lookup and removal commands require the exact scheduler id in `msg.schedulerId`, `msg.jobid`, or `msg.jobId`.
 
 ## Commands
 
-`bull cmd` reads `msg.cmd`. The default command is `add`.
+`bull cmd` reads `msg.cmd`. The legacy `msg.command` alias is also accepted, but new flows should use `msg.cmd`. The default command is `add`.
 
 Core supported command families include:
 
@@ -98,14 +98,11 @@ See [docs/COMMANDS.md](docs/COMMANDS.md).
 
 ## Examples
 
-Import [examples/example_flow.json](examples/example_flow.json) into Node-RED. It includes:
+Import any of these flows into Node-RED:
 
-- simple add and run
-- required `basecasts` scheduled job
-- delayed and prioritized jobs
-- manual acknowledgement
-- QueueEvents
-- parent/child flow producer
+- [examples/example_flow.json](examples/example_flow.json): an end-to-end flow with add/run, a legacy scheduler compatibility case, delayed and prioritized jobs, manual acknowledgement, QueueEvents, and a parent/child flow.
+- [examples/bullmq_features.json](examples/bullmq_features.json): focused examples of common BullMQ features.
+- [examples/repeatable_jobs.json](examples/repeatable_jobs.json): legacy repeat-command and Job Scheduler compatibility examples.
 
 The examples do not contain secrets.
 

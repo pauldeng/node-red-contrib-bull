@@ -56,7 +56,7 @@ Do these once, before the first release.
 - [ ] **Branch ruleset** on `master` (Settings -> Rules -> Rulesets): require a pull request with at least one review, require the CI status checks to pass, block force pushes, restrict deletions. Optionally require linear history and signed commits.
 - [ ] **Code security and analysis** (Settings): enable Dependabot alerts, Dependabot security updates, secret scanning, push protection, and private vulnerability reporting.
 - [ ] **Workflow permissions** (Settings -> Actions -> General): set the default `GITHUB_TOKEN` to read-only.
-- [ ] **CodeQL**: either rely on `.github/workflows/codeql.yml`, or enable Code scanning "default setup" in the Security tab.
+- [ ] **CodeQL**: enable Code scanning "default setup" in the Security tab.
 - [ ] **`release` environment** (Settings -> Environments -> New environment -> `release`): add yourself as a required reviewer so `publish.yml` waits for manual approval.
 
 ## 4. First publish (one time, manual)

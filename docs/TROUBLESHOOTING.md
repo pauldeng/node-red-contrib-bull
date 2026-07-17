@@ -21,7 +21,7 @@ Keep TLS verification enabled when possible. Provide the CA certificate or serve
 
 ## Repeat Job Is Not Found
 
-Legacy repeat lookup uses exact scheduler ids. Use `msg.schedulerId`, `msg.jobopts.jobId`, `msg.jobid`, or `msg.jobId` consistently.
+Legacy repeat lookup uses exact scheduler ids. Pass the id returned during creation in `msg.schedulerId`, `msg.jobid`, or `msg.jobId`. A job option id can help derive the scheduler id during creation, but it is not a separate lookup field.
 
 ## Bull v4 Queue Data Missing After Upgrade
 

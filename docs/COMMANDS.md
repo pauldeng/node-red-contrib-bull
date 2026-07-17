@@ -1,6 +1,6 @@
 # Command Reference
 
-`bull cmd` reads `msg.cmd`. It writes the command result to `msg.payload`.
+`bull cmd` reads `msg.cmd`. The `msg.command` field is a legacy alias; use `msg.cmd` in new flows. The node writes the command result to `msg.payload`.
 
 ## Jobs
 

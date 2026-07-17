@@ -19,6 +19,7 @@ Input node for producer and administration commands.
 Input:
 
 - `msg.cmd`: command name. Defaults to `add`.
+- `msg.command`: legacy alias for `msg.cmd`; use `msg.cmd` in new flows.
 - `msg.payload`: compatibility payload.
 - `msg.jobData`: full BullMQ job data when supplied.
 - `msg.jobName`: BullMQ job name. Defaults to `default`.
@@ -44,6 +45,8 @@ Completion modes:
 - `immediate`: complete after sending the message.
 - `manual`: wait for downstream `bull job` acknowledgement. Fails the job after the ack timeout; set the timeout to `0` to wait indefinitely.
 
+Concurrency must be a positive integer. The optional limiter maximum and duration must either both be blank or both be positive integers.
+
 ## `bull job`
 
 Acts on manual-mode active jobs. Actions can be configured or supplied in `msg.cmd`.
@@ -65,7 +68,7 @@ Non-terminal actions:
 
 ## `bull events`
 
-QueueEvents source node. Empty event filter subscribes to the default documented event list.
+QueueEvents source node. An empty event filter subscribes to: `active`, `added`, `cleaned`, `completed`, `deduplicated`, `delayed`, `drained`, `duplicated`, `failed`, `paused`, `progress`, `removed`, `resumed`, `stalled`, `waiting`, and `waiting-children`.
 
 Output:
 

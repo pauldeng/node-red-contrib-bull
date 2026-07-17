@@ -263,3 +263,91 @@ test("public package docs and helpers use the BullMQ repo name and Node.js 18 su
   assert.match(allText, /github\.com\/pauldeng\/node-red-contrib-bullmq/);
   assert.match(allText, /Node\.js 18/);
 });
+
+test("maintained docs match current BullMQ runtime contracts", () => {
+  const readme = read("README.md");
+  const changelog = read("CHANGELOG.md");
+  const referenceMap = read("docs/REFERENCE_MAP.md");
+  const architecture = read("docs/ARCHITECTURE.md");
+  const nodeGuide = read("docs/NODE_GUIDE.md");
+  const testing = read("docs/TESTING.md");
+  const troubleshooting = read("docs/TROUBLESHOOTING.md");
+  const commands = read("docs/COMMANDS.md");
+  const connections = read("docs/CONNECTIONS.md");
+  const release = read("docs/RELEASE.md");
+
+  for (const example of [
+    "examples/example_flow.json",
+    "examples/bullmq_features.json",
+    "examples/repeatable_jobs.json",
+  ]) {
+    assert.match(readme, new RegExp(example.replaceAll(".", "\\.")));
+  }
+  assert.doesNotMatch(readme, /required `basecasts`/);
+  assert.doesNotMatch(testing, /required `basecasts`/);
+
+  assert.match(referenceMap, /test\/shutdown\.test\.js/);
+  assert.match(referenceMap, /test\/async-style\.test\.js/);
+  assert.match(testing, /shutdown\.test\.js/);
+  assert.match(testing, /async-style\.test\.js/);
+
+  assert.match(architecture, /`bull cmd`.*shared producer connection/i);
+  assert.match(architecture, /config node owns the shared queue/i);
+  assert.match(commands, /`msg\.command`.*legacy alias/i);
+  assert.match(nodeGuide, /`msg\.command`.*legacy alias/i);
+
+  for (const event of [
+    "active",
+    "added",
+    "cleaned",
+    "completed",
+    "deduplicated",
+    "delayed",
+    "drained",
+    "duplicated",
+    "failed",
+    "paused",
+    "progress",
+    "removed",
+    "resumed",
+    "stalled",
+    "waiting",
+    "waiting-children",
+  ]) {
+    assert.match(nodeGuide, new RegExp(`\\b${event}\\b`));
+  }
+
+  for (const text of [
+    "bare IPv6",
+    "bracketed IPv6",
+    "redis://",
+    "rediss://",
+    "sentinelTls",
+    "URL credentials",
+  ]) {
+    assert.match(
+      connections,
+      new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"),
+    );
+  }
+  assert.match(connections, /schemes?.*agree with.*TLS/i);
+  assert.match(connections, /DNS lookup passthrough/i);
+  assert.doesNotMatch(connections, /TLS-enabled cluster discovery/);
+  assert.match(connections, /rejects unauthorized certificates by default/i);
+  assert.match(connections, /`memorydb`.*compatibility alias/i);
+  assert.match(connections, /plaintext.*migration-only/i);
+
+  assert.doesNotMatch(troubleshooting, /msg\.jobopts\.jobId/);
+  assert.doesNotMatch(release, /\.github\/workflows\/codeql\.yml/);
+  assert.match(release, /Code scanning.*default setup/i);
+
+  for (const text of [
+    "BullMQ 5.80.6",
+    "ioredis 5.11.1",
+    "resource",
+    "URL credentials",
+    "limiter",
+  ]) {
+    assert.match(changelog, new RegExp(text, "i"));
+  }
+});

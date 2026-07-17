@@ -6,7 +6,7 @@
 npm test
 ```
 
-This runs built-in `node:test` suites for package metadata, connection normalization, scheduler compatibility, command dispatch, editor surface, registration, Docker fixture contracts, docs, and examples.
+This runs built-in `node:test` suites for package metadata, connection normalization, scheduler compatibility, command dispatch, editor surface, registration, resource shutdown, async style, Docker fixture contracts, docs, and examples. The lifecycle checks live in `test/shutdown.test.js`; bounded-close implementation constraints live in `test/async-style.test.js`.
 
 ## Node-RED Runtime Tests
 
@@ -66,7 +66,7 @@ Current executable fixtures:
 - `sentinel-auth`: Redis master, two replicas, and three Sentinels with data-node ACL auth
 - `sentinel-tls`: Redis master, two replicas, and three TLS-enabled Sentinels
 
-The shared deployment test proves Node-RED load, connection, add/run delivery, required `basecasts` scheduler creation/removal, and absolute scheduler minute/second metadata. TLS fixtures use local self-signed test certificates and disable certificate verification for those Docker-only deployments. MemoryDB remains the certificate-verified TLS deployment path.
+The shared deployment test proves Node-RED load, connection, add/run delivery, legacy scheduler compatibility through `basecasts` creation/removal, and absolute scheduler minute/second metadata. TLS fixtures use local self-signed test certificates and disable certificate verification for those Docker-only deployments. MemoryDB remains the certificate-verified TLS deployment path.
 
 ## AWS MemoryDB
 

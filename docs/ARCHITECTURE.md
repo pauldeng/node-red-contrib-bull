@@ -24,7 +24,9 @@ The runtime does Node-RED lifecycle work only: creating nodes, wiring input hand
 - QueueEvents uses a dedicated connection;
 - Cluster and MemoryDB use `{bull}` by default as the BullMQ prefix.
 
-Connection and resource errors are reported on the consuming runtime node's status (`bull run`, `bull events`, `bull flow`). The shared producer connection and queue used by `bull cmd` report on the config node.
+Each BullMQ owner (`Queue`, `Worker`, `QueueEvents`, or `FlowProducer`) is tracked with its owned ioredis connection. A runtime node releases its pair on redeploy; config-node shutdown closes independent pairs concurrently, always attempting the BullMQ owner before its raw connection.
+
+Connection and resource errors are reported on the consuming runtime node's status (`bull run`, `bull events`, `bull flow`). The config node owns the shared queue and its producer connection. Each `bull cmd` mirrors that shared producer connection on its visible status, while Queue errors report on the config node.
 
 Secrets are read from Node-RED credentials first, with legacy plain fields accepted only for backward compatibility.
 

@@ -21,6 +21,8 @@
 - `test/scheduler.test.js`: repeat scheduler compatibility.
 - `test/commands.test.js`: command dispatch behavior.
 - `test/acknowledgements.test.js`: manual-acknowledgement registry lifecycle and leak prevention.
+- `test/shutdown.test.js`: BullMQ/ioredis resource ownership, partial redeploy cleanup, and concurrent shutdown.
+- `test/async-style.test.js`: bounded-close async implementation constraints.
 - `test/node-red-registration.test.js`: Node-RED node type registration.
 - `test/editor-contract.test.js`: static editor surface.
 - `test/docs-contract.test.js`: required docs and examples.
