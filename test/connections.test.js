@@ -151,3 +151,60 @@ test("parses endpoint lists from strings and arrays", () => {
     ],
   );
 });
+
+test("parses hostnames, IPv6, and credential-free Redis URLs", () => {
+  assert.deepEqual(
+    parseEndpointList(
+      "host-a,host-b:6380,::1,[2001:db8::2]:6381,redis://host-c:6382,rediss://[2001:db8::3]:6383",
+    ),
+    [
+      { host: "host-a", port: 6379 },
+      { host: "host-b", port: 6380 },
+      { host: "::1", port: 6379 },
+      { host: "2001:db8::2", port: 6381 },
+      { host: "host-c", port: 6382 },
+      { host: "2001:db8::3", port: 6383 },
+    ],
+  );
+});
+
+test("rejects credentials embedded in Redis endpoint URLs", () => {
+  assert.throws(
+    () => parseEndpointList("redis://user:secret@redis.example.test:6379"),
+    /endpoint URLs cannot include credentials/i,
+  );
+});
+
+test("rejects endpoint URL schemes that contradict topology TLS", () => {
+  assert.throws(
+    () =>
+      normalizeQueueConfig({
+        name: "clustered",
+        deployment: "cluster",
+        clusterNodes: "rediss://redis.example.test:6379",
+        tls: false,
+      }),
+    /rediss:\/\/.*TLS.*enabled/i,
+  );
+  assert.throws(
+    () =>
+      normalizeQueueConfig({
+        name: "clustered",
+        deployment: "cluster",
+        clusterNodes: "redis://redis.example.test:6379",
+        tls: true,
+      }),
+    /redis:\/\/.*TLS.*disabled/i,
+  );
+  assert.throws(
+    () =>
+      normalizeQueueConfig({
+        name: "sentinel",
+        deployment: "sentinel",
+        sentinelMasterName: "mymaster",
+        sentinels: "rediss://sentinel.example.test:26379",
+        sentinelTls: false,
+      }),
+    /rediss:\/\/.*Sentinel TLS.*enabled/i,
+  );
+});
