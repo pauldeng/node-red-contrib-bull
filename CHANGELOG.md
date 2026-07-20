@@ -2,7 +2,7 @@
 
 All notable changes to this package are documented here.
 
-## Unreleased
+## 1.0.3 - 2026-07-20
 
 - Updated to BullMQ 5.80.9 and ioredis 5.11.1, both pinned exactly.
 - Paired every BullMQ resource with its owned ioredis connection, closed runtime resources on redeploy, and made independent config-node shutdowns concurrent.
