@@ -1,6 +1,6 @@
 # Agent Guide
 
-This repository is a Node-RED node package that migrated from Bull v4 to BullMQ 5.80.6.
+This repository is a Node-RED node package that migrated from Bull v4 to BullMQ 5.80.9.
 
 ## Start Here
 
@@ -19,7 +19,7 @@ Read these files before changing behavior:
 - Use test-driven development for behavior changes.
 - Keep legacy node types: `bull-queue-server`, `bull cmd`, and `bull run`.
 - Do not reintroduce `bull` or `sprintf-js`.
-- Keep BullMQ pinned to exactly `5.80.6`.
+- Keep BullMQ pinned to exactly `5.80.9`.
 - Keep secrets in Node-RED credentials or environment variables, never in examples/docs/logs.
 - Do not expose BullMQ lock tokens in Node-RED messages.
 - Use exact scheduler ids for repeat compatibility; never substring-match scheduler keys.

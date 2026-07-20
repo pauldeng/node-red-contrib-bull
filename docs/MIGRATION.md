@@ -9,7 +9,7 @@
 
 ## What Changes
 
-- Runtime dependency is BullMQ 5.80.6.
+- Runtime dependency is BullMQ 5.80.9.
 - `bull` and `sprintf-js` are removed.
 - Repeatable jobs use BullMQ Job Schedulers.
 - Scheduled jobs require a stable scheduler id.

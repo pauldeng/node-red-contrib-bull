@@ -4,7 +4,7 @@ All notable changes to this package are documented here.
 
 ## Unreleased
 
-- Updated to BullMQ 5.80.6 and ioredis 5.11.1, both pinned exactly.
+- Updated to BullMQ 5.80.9 and ioredis 5.11.1, both pinned exactly.
 - Paired every BullMQ resource with its owned ioredis connection, closed runtime resources on redeploy, and made independent config-node shutdowns concurrent.
 - Added unambiguous Cluster and Sentinel endpoint parsing for IPv6 and Redis URLs; URL credentials are rejected in favor of Node-RED credential fields, and explicit schemes must match TLS settings.
 - Required Worker concurrency and limiter values to be positive integers, with limiter maximum and duration configured together in both the runtime and editor.
