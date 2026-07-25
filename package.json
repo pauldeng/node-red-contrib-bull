@@ -65,6 +65,6 @@
     "@playwright/test": "1.61.1",
     "node-red": "5.0.1",
     "node-red-node-test-helper": "^0.3.6",
-    "prettier": "3.9.4"
+    "prettier": "3.9.6"
   }
 }
