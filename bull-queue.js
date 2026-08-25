@@ -75,7 +75,7 @@ function disconnectClient(client) {
   }
 }
 
-function forceDisconnect(resource) {
+async function forceDisconnect(resource) {
   if (!resource) {
     return;
   }
@@ -84,14 +84,45 @@ function forceDisconnect(resource) {
     disconnectClient(resource);
     return;
   }
-  // BullMQ resource. Its public disconnect() awaits a connection promise that
-  // never settles while Redis is unreachable, so reach for the underlying
-  // ioredis clients directly (BullMQ is pinned to exactly 5.80.9).
-  if (resource.connection) {
-    disconnectClient(resource.connection._client);
+  // BullMQ resource (Queue/QueueEvents/Worker/FlowProducer): force disconnect
+  // through the public API, which delegates to the backend's connections.
+  if (typeof resource.disconnect !== "function") {
+    return;
   }
-  if (resource.blockingConnection) {
-    disconnectClient(resource.blockingConnection._client);
+  if ((await settleWithin(resource.disconnect(), CLOSE_GRACE_MS)) !== "timeout") {
+    return;
+  }
+  // Measured on installed BullMQ 6.2.1: disconnect() awaits the same
+  // connection-ready promise as close(), which never settles while Redis is
+  // unreachable (ioredis retries the connection forever, so it never reaches
+  // 'ready' or 'end'). The public API alone cannot interrupt that retry loop,
+  // so as a last resort reach the backend's raw ioredis clients and kill the
+  // sockets directly -- otherwise the reconnect timers keep the process alive
+  // forever and Node-RED can never exit.
+  if (typeof resource.getBackend !== "function") {
+    return;
+  }
+  const backend = resource.getBackend();
+  disconnectClient(backend && backend.connection && backend.connection._client);
+  disconnectClient(
+    backend && backend.blockingConnection && backend.blockingConnection._client,
+  );
+  // Measured on installed BullMQ 6.2.1: a Worker's close() never reaches this
+  // point on its own here, because its very first cleanup step awaits the
+  // same stuck connection above. That means the lock-renewal timer it starts
+  // on construction (independent of connection state) is never cancelled by
+  // Worker's own close() -- stop it here directly so it cannot outlive the
+  // resource and keep the process alive.
+  if (resource.lockManager && typeof resource.lockManager.close === "function") {
+    await resource.lockManager.close();
+  }
+  // Same reasoning for the stalled-job checker: Worker.close() only stops it
+  // after the cleanup step that hung above, and each check reschedules its own
+  // timer. This one is only live if the worker processed at least once before
+  // Redis went away -- the common production case, unlike a connection that was
+  // never reachable at all.
+  if (typeof resource.stalledCheckStopper === "function") {
+    resource.stalledCheckStopper();
   }
 }
 
@@ -106,19 +137,19 @@ async function closeResource(resource) {
     // connections and force-disconnect everything else.
     if (resource.status === "ready" && typeof resource.quit === "function") {
       if ((await settleWithin(resource.quit(), CLOSE_GRACE_MS)) === "timeout") {
-        forceDisconnect(resource);
+        await forceDisconnect(resource);
       }
     } else {
-      forceDisconnect(resource);
+      await forceDisconnect(resource);
     }
     return;
   }
 
   // BullMQ resource: QueueEvents.close() blocks forever on a connection that
-  // never became ready, so cap the graceful close and force-disconnect the
-  // sockets when it does not settle in time.
+  // never became ready, so cap the graceful close and force-disconnect when
+  // it does not settle in time (see forceDisconnect for the fallback chain).
   if ((await settleWithin(resource.close(), CLOSE_GRACE_MS)) === "timeout") {
-    forceDisconnect(resource);
+    await forceDisconnect(resource);
   }
 }
 
