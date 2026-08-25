@@ -42,6 +42,12 @@
 - `test/deployments/sentinel-tls/`: Redis Sentinel with TLS for data-node and Sentinel connections.
 - `test/deployments/tls-certs/`: local self-signed certificates for Docker TLS fixtures.
 
+## Agent Docs
+
+- `AGENTS.md`: entry point; `CLAUDE.md` imports it.
+- `docs/RULES.md`: hard constraints.
+- `docs/CHANGE_WORKFLOW.md`: change procedure.
+
 ## User Docs
 
 - `README.md`: overview and installation.

@@ -17,6 +17,7 @@ test("agent and user documentation files exist", () => {
     "CONTRIBUTING.md",
     "SECURITY.md",
     "docs/REFERENCE_MAP.md",
+    "docs/RULES.md",
     "docs/ARCHITECTURE.md",
     "docs/NODE_GUIDE.md",
     "docs/CHANGE_WORKFLOW.md",
@@ -29,6 +30,11 @@ test("agent and user documentation files exist", () => {
   ]) {
     assert.ok(fs.existsSync(path.join(repoRoot, file)), `${file} missing`);
   }
+});
+
+test("agent instructions keep global rules and the Claude import discoverable", () => {
+  assert.match(read("AGENTS.md"), /^## Before Any Change$/m);
+  assert.match(read("CLAUDE.md"), /^@AGENTS\.md$/m);
 });
 
 test("README documents BullMQ migration, supported deployments, and unsupported features", () => {
@@ -202,6 +208,7 @@ test("repository text does not contain MemoryDB secret assignments", () => {
     "CLAUDE.md",
     "AGENTS.md",
     "docs/REFERENCE_MAP.md",
+    "docs/RULES.md",
     "docs/ARCHITECTURE.md",
     "docs/NODE_GUIDE.md",
     "docs/CHANGE_WORKFLOW.md",
@@ -230,6 +237,7 @@ test("public package docs and helpers use the BullMQ repo name and Node.js 18 su
   const files = [
     "README.md",
     "docs/REFERENCE_MAP.md",
+    "docs/RULES.md",
     "docs/ARCHITECTURE.md",
     "docs/NODE_GUIDE.md",
     "docs/CHANGE_WORKFLOW.md",

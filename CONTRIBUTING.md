@@ -2,51 +2,24 @@
 
 ## Development Setup
 
-Use Node.js 22.9 or newer (the development dependency on Node-RED 5 requires it) and install dependencies from the lockfile:
+Use Node.js 22.9 or newer (the development dependency on Node-RED 5 requires it; the published package still supports Node.js 18) and install from the lockfile:
 
 ```sh
 npm ci
 ```
 
-Run the default test suite before opening a pull request:
+## Before Opening A Pull Request
 
 ```sh
-npm test
+npm test && npm run format:check
 ```
 
-## Change Rules
+Both gate CI. Editor changes also need `npm run test:playwright`; Redis deployment changes also need `npm run test:deployments`. See [docs/TESTING.md](docs/TESTING.md) for what each suite covers and how to run the opt-in MemoryDB path.
 
-- Keep BullMQ pinned to exactly `5.80.9`.
-- Do not reintroduce `bull` or `sprintf-js`.
-- Preserve legacy node types: `bull-queue-server`, `bull cmd`, and `bull run`.
-- Keep secrets in Node-RED credentials or environment variables, never in examples, docs, logs, or test fixtures.
-- Do not expose BullMQ lock tokens in Node-RED messages.
-- Use exact scheduler ids for repeat compatibility.
-- Use a BullMQ hash-tag prefix such as `{bull}` for Redis Cluster and AWS MemoryDB.
+## Rules And Workflow
 
-## Tests
+- [docs/RULES.md](docs/RULES.md) — constraints that must not be broken: legacy node types, pinned dependencies, secret handling, scheduler ids, cluster prefixes.
+- [docs/CHANGE_WORKFLOW.md](docs/CHANGE_WORKFLOW.md) — the test-first loop, and what to update for connection, scheduler, and editor changes.
+- [docs/REFERENCE_MAP.md](docs/REFERENCE_MAP.md) — which source file and which test own a given behavior.
 
-Use test-driven changes for behavior updates:
-
-1. Add or update the smallest failing test.
-2. Run the focused test and confirm the expected failure.
-3. Implement the change.
-4. Run the focused test and then `npm test`.
-
-For editor changes, run:
-
-```sh
-npm run test:playwright
-```
-
-For Redis deployment changes, run the Docker deployment matrix when available:
-
-```sh
-npm run test:deployments
-```
-
-MemoryDB tests are opt-in and must read credentials only from environment variables.
-
-## Documentation
-
-Update README, Node-RED help text, and the docs in `docs/` whenever public behavior changes.
+Update the README, the Node-RED help text in `bull-queue.html`, and the relevant file in `docs/` whenever public behavior changes.
