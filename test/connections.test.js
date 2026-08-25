@@ -175,6 +175,45 @@ test("rejects credentials embedded in Redis endpoint URLs", () => {
   );
 });
 
+test("normalizes telemetry config with a blank service name", () => {
+  const config = normalizeQueueConfig({
+    name: "basecasts",
+  });
+
+  assert.equal(config.telemetry, false);
+  assert.equal(config.telemetryServiceName, undefined);
+  assert.equal(config.telemetryMetrics, false);
+});
+
+test("normalizes telemetry config when enabled", () => {
+  const config = normalizeQueueConfig({
+    name: "basecasts",
+    telemetry: true,
+    telemetryServiceName: "my-service",
+    telemetryMetrics: true,
+  });
+
+  assert.equal(config.telemetry, true);
+  assert.equal(config.telemetryServiceName, "my-service");
+  assert.equal(config.telemetryMetrics, true);
+});
+
+test("buildBullMQOptions omits the telemetry key entirely when no telemetry instance is passed", () => {
+  const config = normalizeQueueConfig({ name: "basecasts" });
+  const options = buildBullMQOptions(config, { fake: "connection" });
+
+  assert.equal(Object.hasOwn(options, "telemetry"), false);
+});
+
+test("buildBullMQOptions sets telemetry only when an instance is passed", () => {
+  const config = normalizeQueueConfig({ name: "basecasts" });
+  const telemetry = { fake: "telemetry" };
+  const options = buildBullMQOptions(config, { fake: "connection" }, telemetry);
+
+  assert.equal(Object.hasOwn(options, "telemetry"), true);
+  assert.equal(options.telemetry, telemetry);
+});
+
 test("rejects endpoint URL schemes that contradict topology TLS", () => {
   assert.throws(
     () =>

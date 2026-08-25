@@ -115,3 +115,79 @@ test("toggles deployment and completion-specific rows", async ({ page }) => {
   await expect(page.locator(".bull-db-row")).toBeVisible();
   await page.locator("#node-config-dialog-cancel").click();
 });
+
+test("telemetry fields toggle their rows and persist across dialog close and reopen", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => {
+    const loader = document.querySelector("#red-ui-loading-progress");
+    return (
+      window.RED &&
+      RED.nodes.getType("bull-queue-server") &&
+      RED.workspaces.active() &&
+      loader &&
+      getComputedStyle(loader).display === "none"
+    );
+  });
+
+  await page.evaluate(() => {
+    RED.editor.editConfig("", "bull-queue-server", "_ADD_");
+  });
+
+  await expect(page.locator("#node-config-input-telemetry")).toBeVisible();
+  await expect(
+    page.locator("#node-config-input-telemetryServiceName"),
+  ).toBeHidden();
+  await expect(
+    page.locator("#node-config-input-telemetryMetrics"),
+  ).toBeHidden();
+
+  await page.locator("#node-config-input-name").fill("telemetry-queue");
+  await page.locator("#node-config-input-telemetry").check();
+  await expect(
+    page.locator("#node-config-input-telemetryServiceName"),
+  ).toBeVisible();
+  await expect(
+    page.locator("#node-config-input-telemetryMetrics"),
+  ).toBeVisible();
+
+  await page
+    .locator("#node-config-input-telemetryServiceName")
+    .fill("my-otel-service");
+  await page.locator("#node-config-input-telemetryMetrics").check();
+
+  await page.locator("#node-config-dialog-ok").click();
+  await expect(page.locator("#node-config-dialog-ok")).toHaveCount(0);
+
+  const configId = await page.evaluate(() => {
+    let id;
+    RED.nodes.eachConfig((node) => {
+      if (
+        node.type === "bull-queue-server" &&
+        node.name === "telemetry-queue"
+      ) {
+        id = node.id;
+      }
+    });
+    return id;
+  });
+  expect(configId).toBeTruthy();
+
+  await page.evaluate((id) => {
+    RED.editor.editConfig("", "bull-queue-server", id);
+  }, configId);
+
+  await expect(page.locator("#node-config-input-telemetry")).toBeChecked();
+  await expect(
+    page.locator("#node-config-input-telemetryServiceName"),
+  ).toBeVisible();
+  await expect(
+    page.locator("#node-config-input-telemetryServiceName"),
+  ).toHaveValue("my-otel-service");
+  await expect(
+    page.locator("#node-config-input-telemetryMetrics"),
+  ).toBeChecked();
+
+  await page.locator("#node-config-dialog-cancel").click();
+});

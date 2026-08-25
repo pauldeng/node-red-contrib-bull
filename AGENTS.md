@@ -25,6 +25,7 @@ Both gate CI on every pull request, so treat them as the floor for any change. E
 | public node contracts and message shapes | `docs/NODE_GUIDE.md`      |
 | `msg.cmd` behavior                       | `docs/COMMANDS.md`        |
 | Redis options, TLS, cluster, sentinel    | `docs/CONNECTIONS.md`     |
+| OpenTelemetry tracing and metrics        | `docs/TELEMETRY.md`       |
 | tests and verification                   | `docs/TESTING.md`         |
 | Bull v4 compatibility                    | `docs/MIGRATION.md`       |
 | a reported failure                       | `docs/TROUBLESHOOTING.md` |

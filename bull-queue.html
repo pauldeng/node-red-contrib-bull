@@ -86,6 +86,20 @@
     <label for="node-config-input-prefix"><i class="fa fa-code"></i> Prefix</label>
     <input type="text" id="node-config-input-prefix" placeholder="{bull}">
   </div>
+  <div class="form-row">
+    <label for="node-config-input-telemetry"><i class="fa fa-line-chart"></i> Telemetry</label>
+    <input type="checkbox" id="node-config-input-telemetry" style="display:inline-block; width:auto; vertical-align:top;">
+    <span>Enable OpenTelemetry tracing via bullmq-otel</span>
+  </div>
+  <div class="form-row bull-telemetry-row">
+    <label for="node-config-input-telemetryServiceName"><i class="fa fa-tag"></i> Service Name</label>
+    <input type="text" id="node-config-input-telemetryServiceName" placeholder="queue name">
+  </div>
+  <div class="form-row bull-telemetry-row">
+    <label for="node-config-input-telemetryMetrics"><i class="fa fa-bar-chart"></i> Metrics</label>
+    <input type="checkbox" id="node-config-input-telemetryMetrics" style="display:inline-block; width:auto; vertical-align:top;">
+    <span>Enable OpenTelemetry metrics</span>
+  </div>
 </script>
 
 <script type="text/javascript">
@@ -97,6 +111,7 @@
       $(".bull-sentinel-row").toggle(deployment === "sentinel");
       $(".bull-db-row").toggle(deployment !== "cluster");
       $(".bull-tls-row").toggle($("#node-config-input-tls").is(":checked"));
+      $(".bull-telemetry-row").toggle($("#node-config-input-telemetry").is(":checked"));
     }
 
     RED.nodes.registerType("bull-queue-server", {
@@ -116,7 +131,10 @@
         sentinelTls: { value: false },
         tlsRejectUnauthorized: { value: true },
         tlsServerName: { value: "" },
-        prefix: { value: "" }
+        prefix: { value: "" },
+        telemetry: { value: false },
+        telemetryServiceName: { value: "" },
+        telemetryMetrics: { value: false }
       },
       credentials: {
         password: { type: "password" },
@@ -131,6 +149,7 @@
       oneditprepare: function() {
         $("#node-config-input-deployment").on("change", updateBullQueueServerRows);
         $("#node-config-input-tls").on("change", updateBullQueueServerRows);
+        $("#node-config-input-telemetry").on("change", updateBullQueueServerRows);
         updateBullQueueServerRows();
       }
     });
@@ -163,6 +182,9 @@
     <li><b>Client Cert</b>: PEM client certificate for mutual TLS deployments. Stored as a Node-RED credential.</li>
     <li><b>Client Key</b>: PEM client private key for mutual TLS deployments. Stored as a Node-RED credential.</li>
     <li><b>Prefix</b>: BullMQ key prefix. Redis Cluster and MemoryDB prefixes must contain a hash tag such as <code>{bull}</code> so BullMQ keys stay in one hash slot for atomic operations.</li>
+    <li><b>Telemetry</b>: Enables OpenTelemetry tracing for this queue's <code>Queue</code>, <code>Worker</code>, and <code>FlowProducer</code> instances using <a href="https://www.npmjs.com/package/bullmq-otel" target="_blank" rel="noopener noreferrer">bullmq-otel</a>. Off by default. <code>bullmq-otel</code> is an optional dependency and must be installed separately (<code>npm install bullmq-otel</code>) before enabling this switch. This node does not start or configure an OpenTelemetry SDK or exporter; the host Node-RED process owns that (for example NODE_OPTIONS auto-instrumentation, or an SDK bootstrapped from Node-RED's <code>settings.js</code>). When no OpenTelemetry provider is registered, <code>bullmq-otel</code> simply no-ops rather than erroring.</li>
+    <li><b>Service Name</b>: Tracer and meter name reported to OpenTelemetry. Leave blank to use the <b>Queue</b> name.</li>
+    <li><b>Metrics</b>: Enables OpenTelemetry metrics in addition to tracing. A <code>MeterProvider</code> must be registered with the host process before this queue is first used, otherwise metrics are dropped. For metrics scraping without any OpenTelemetry stack, the <code>bull cmd</code> node's <code>msg.cmd</code> <code>exportPrometheusMetrics</code> is a zero-dependency alternative.</li>
   </ul>
 
   <h3>Example</h3>

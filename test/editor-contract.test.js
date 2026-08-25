@@ -46,6 +46,9 @@ test("config editor exposes deployment, cluster, sentinel, auth, and TLS fields"
     "tlsRejectUnauthorized",
     "tlsServerName",
     "prefix",
+    "telemetry",
+    "telemetryServiceName",
+    "telemetryMetrics",
   ]) {
     assert.match(html, new RegExp(`node-config-input-${field}`));
   }
@@ -88,6 +91,12 @@ test("help documents every config node field", () => {
     "Client Cert",
     "Client Key",
     "Prefix",
+    "Telemetry",
+    "Service Name",
+    "Metrics",
+    "bullmq-otel",
+    "npm install bullmq-otel",
+    "exportPrometheusMetrics",
     "Example",
   ]) {
     assert.match(help, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
@@ -211,4 +220,19 @@ test("editor hides irrelevant rows and teaches configured completion", () => {
   assert.match(html, /class="form-row bull-db-row"/);
   assert.match(html, /class="form-row bull-ack-timeout-row"/);
   assert.match(helpBlock("bull job"), /delete msg\.cmd;/);
+});
+
+test("telemetry fields default off and their rows toggle with the telemetry checkbox", () => {
+  assert.match(html, /telemetry:\s*\{\s*value:\s*false\s*\}/);
+  assert.match(html, /telemetryServiceName:\s*\{\s*value:\s*""\s*\}/);
+  assert.match(html, /telemetryMetrics:\s*\{\s*value:\s*false\s*\}/);
+  assert.match(html, /class="form-row bull-telemetry-row"/);
+  assert.match(
+    html,
+    /\$\("\.bull-telemetry-row"\)\.toggle\(\$\("#node-config-input-telemetry"\)\.is\(":checked"\)\)/,
+  );
+  assert.match(
+    html,
+    /\$\("#node-config-input-telemetry"\)\.on\("change", updateBullQueueServerRows\)/,
+  );
 });

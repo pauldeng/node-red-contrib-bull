@@ -7,7 +7,7 @@ npm test
 npm run format:check
 ```
 
-`npm test` runs built-in `node:test` suites for package metadata, connection normalization, scheduler compatibility, command dispatch, editor surface, registration, resource shutdown, async style, Docker fixture contracts, docs, and examples. The lifecycle checks live in `test/shutdown.test.js`; bounded-close implementation constraints live in `test/async-style.test.js`. `npm run format:check` runs Prettier. CI gates both on every pull request.
+`npm test` runs built-in `node:test` suites for package metadata, connection normalization, scheduler compatibility, command dispatch, editor surface, registration, resource shutdown, async style, telemetry wiring, Docker fixture contracts, docs, and examples. The lifecycle checks live in `test/shutdown.test.js`; bounded-close implementation constraints live in `test/async-style.test.js`. `npm run format:check` runs Prettier. CI gates both on every pull request.
 
 ## Node-RED Runtime Tests
 
