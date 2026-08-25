@@ -17,17 +17,20 @@ Small BullMQ feature examples that all use one local Redis queue config named `b
 - Scheduler: `scheduler: every minute` adds a repeatable scheduler with `repeat.pattern`.
 - Events: the `bull events` node emits completed, failed, delayed, deduplicated, duplicated, and progress events.
 - Manual acknowledgement: `manual ack worker` sends a job through `bull job` progress and complete actions.
+- Cancel: `cancel: stop running job` demonstrates BullMQ v6 cooperative cancellation on its own `bullmq-cancel` queue, with its own manual-mode worker. It is deliberately separate from the manual ack demo: a `cancelJob` node sharing that worker would cancel the very job the acknowledgement demo is completing.
+- Metrics: `metrics: exportPrometheusMetrics` sends `msg.cmd = "exportPrometheusMetrics"` and returns a Prometheus-formatted string.
 - Flow: `flow: parent plus child` sends a parent/child tree to `bull flow`.
 
 Point `bullmq-features` at your Redis deployment before deploying the flow.
 
 ## `repeatable_jobs.json`
 
-Dedicated repeatable job commands for the `basecasts` queue.
+Commands for the `basecasts` queue's BullMQ Job Scheduler, using this package's legacy repeatable-job command names (`getRepeatableJobs`, `getRepeatableJobByKey`, `removeRepeatableByKey`, `count`) as aliases onto the Job Scheduler API.
 
 - `repeat: add basecasts job` sends `msg.cmd = "add"` with `msg.jobopts.repeat.cron`.
-- `repeat: getRepeatableJobs` lists repeatable schedulers.
-- `repeat: count` counts repeatable schedulers.
+- `repeat: add job with repeat.utc` sends the same shape plus a legacy `repeat.utc: true`, which this package translates into `repeat.tz: "UTC"`.
+- `repeat: getRepeatableJobs` lists Job Schedulers.
+- `repeat: count` counts Job Schedulers.
 - `repeat: getRepeatableJobByKey` reads the scheduler id from `msg.payload` into `msg.jobid`.
 - `repeat: removeRepeatableByKey` removes the scheduler id from `msg.payload`.
 - `repeat: stopAndRemoveAllJobs` sends `msg.cmd = "stopAndRemoveAllJobs"` to remove schedulers and clean inactive jobs.

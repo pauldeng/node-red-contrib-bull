@@ -1,6 +1,6 @@
 {
   "name": "@pauldeng/node-red-contrib-bullmq",
-  "version": "1.0.3",
+  "version": "2.0.0",
   "description": "BullMQ-backed Redis job queue nodes for Node-RED",
   "main": "bull-queue.js",
   "files": [

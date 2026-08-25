@@ -30,7 +30,11 @@
     "type": "inject",
     "z": "flow-bullmq-features",
     "name": "delay: send later",
-    "props": [{ "p": "payload" }],
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
     "repeat": "",
     "crontab": "",
     "once": false,
@@ -62,7 +66,11 @@
     "type": "inject",
     "z": "flow-bullmq-features",
     "name": "priority: high priority",
-    "props": [{ "p": "payload" }],
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
     "repeat": "",
     "crontab": "",
     "once": false,
@@ -94,7 +102,11 @@
     "type": "inject",
     "z": "flow-bullmq-features",
     "name": "dedupe: same job once",
-    "props": [{ "p": "payload" }],
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
     "repeat": "",
     "crontab": "",
     "once": false,
@@ -126,7 +138,11 @@
     "type": "inject",
     "z": "flow-bullmq-features",
     "name": "rate limit: 2 per second",
-    "props": [{ "p": "payload" }],
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
     "repeat": "",
     "crontab": "",
     "once": false,
@@ -158,7 +174,11 @@
     "type": "inject",
     "z": "flow-bullmq-features",
     "name": "scheduler: every minute",
-    "props": [{ "p": "payload" }],
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
     "repeat": "",
     "crontab": "",
     "once": false,
@@ -246,6 +266,52 @@
     "wires": [["debug-worker-output"]]
   },
   {
+    "id": "job-cancel-example",
+    "type": "bull job",
+    "z": "flow-bullmq-features",
+    "name": "cancel: stop running job",
+    "action": "cancelJob",
+    "x": 450,
+    "y": 920,
+    "wires": [["debug-worker-output"]]
+  },
+  {
+    "id": "inject-metrics-example",
+    "type": "inject",
+    "z": "flow-bullmq-features",
+    "name": "metrics: exportPrometheusMetrics",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payload": "",
+    "payloadType": "str",
+    "x": 200,
+    "y": 1000,
+    "wires": [["fn-metrics-example"]]
+  },
+  {
+    "id": "fn-metrics-example",
+    "type": "function",
+    "z": "flow-bullmq-features",
+    "name": "exportPrometheusMetrics",
+    "func": "msg.cmd = \"exportPrometheusMetrics\";\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 460,
+    "y": 1000,
+    "wires": [["cmd-feature-examples"]]
+  },
+  {
     "id": "events-feature-example",
     "type": "bull events",
     "z": "flow-bullmq-features",
@@ -261,7 +327,11 @@
     "type": "inject",
     "z": "flow-bullmq-features",
     "name": "flow: parent plus child",
-    "props": [{ "p": "payload" }],
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
     "repeat": "",
     "crontab": "",
     "once": false,
@@ -327,5 +397,73 @@
     "x": 900,
     "y": 720,
     "wires": []
+  },
+  {
+    "id": "queue-bullmq-cancel",
+    "type": "bull-queue-server",
+    "name": "bullmq-cancel",
+    "deployment": "single",
+    "address": "localhost",
+    "port": "6379",
+    "db": "",
+    "clusterNodes": "",
+    "sentinels": "",
+    "sentinelMasterName": "",
+    "username": "",
+    "sentinelUsername": "",
+    "tls": false,
+    "sentinelTls": false,
+    "tlsRejectUnauthorized": true,
+    "tlsServerName": "",
+    "prefix": ""
+  },
+  {
+    "id": "inject-cancel-example",
+    "type": "inject",
+    "z": "flow-bullmq-features",
+    "name": "cancel: stop running job",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "payload": "this job gets cancelled",
+    "payloadType": "str",
+    "x": 160,
+    "y": 860,
+    "wires": [["fn-cancel-example"]]
+  },
+  {
+    "id": "fn-cancel-example",
+    "type": "function",
+    "z": "flow-bullmq-features",
+    "name": "add to the cancel queue",
+    "func": "msg.cmd = \"add\";\nmsg.jobName = \"cancellable\";\nmsg.jobopts = {\n  attempts: 1,\n  removeOnFail: false\n};\nreturn msg;",
+    "x": 410,
+    "y": 860,
+    "wires": [["cmd-cancel-example"]]
+  },
+  {
+    "id": "cmd-cancel-example",
+    "type": "bull cmd",
+    "z": "flow-bullmq-features",
+    "name": "cmd: cancel queue",
+    "queue": "queue-bullmq-cancel",
+    "x": 680,
+    "y": 860,
+    "wires": [[]]
+  },
+  {
+    "id": "run-cancel-example",
+    "type": "bull run",
+    "z": "flow-bullmq-features",
+    "name": "cancellable worker",
+    "queue": "queue-bullmq-cancel",
+    "completionMode": "manual",
+    "ackTimeout": "300000",
+    "concurrency": "1",
+    "x": 180,
+    "y": 920,
+    "wires": [["job-cancel-example"]]
   }
 ]

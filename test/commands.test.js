@@ -485,7 +485,7 @@ test("maps queue administration, limits, logs, and metrics commands", async () =
       { logs: ["row"] },
       { logs: ["row"] },
     ],
-    ["getVersion", {}, [], "5.80.9", "5.80.9"],
+    ["getVersion", {}, [], "bullmq:6.2.1", "bullmq:6.2.1"],
     ["exportPrometheusMetrics", {}, [], "metric 1", "metric 1"],
   ];
 
