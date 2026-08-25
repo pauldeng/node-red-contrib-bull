@@ -62,9 +62,9 @@ test("package metadata targets BullMQ, Node.js 18+, and Node-RED 4.1/5.x", () =>
   assert.equal(packageJson.engines?.node, ">=18");
   assert.equal(packageJson["node-red"]?.version, ">=4.1.0 <6");
 
-  assert.equal(packageJson.devDependencies?.["@playwright/test"], "1.61.1");
-  assert.equal(packageJson.devDependencies?.["node-red"], "5.0.1");
-  assert.equal(packageJson.devDependencies?.prettier, "3.9.4");
+  assert.equal(packageJson.devDependencies?.["@playwright/test"], "1.62.1");
+  assert.equal(packageJson.devDependencies?.["node-red"], "5.0.4");
+  assert.equal(packageJson.devDependencies?.prettier, "3.9.6");
   assert.ok(packageJson.devDependencies?.["node-red-node-test-helper"]);
 
   // Tests run on node:test; mocha and sinon are not used directly.
