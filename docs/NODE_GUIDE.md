@@ -12,6 +12,8 @@ Deployment modes:
 
 Cluster and MemoryDB prefixes must contain a Redis hash tag; use `{bull}` unless you have a tested custom hash tag.
 
+Optional OpenTelemetry fields `telemetry`, `telemetryServiceName`, and `telemetryMetrics` are off/blank by default; see [docs/TELEMETRY.md](TELEMETRY.md).
+
 ## `bull cmd`
 
 Input node for producer and administration commands.
@@ -29,6 +31,8 @@ Output:
 
 - successful result in `msg.payload`;
 - errors go to `done(err)` or `node.error(err, msg)`.
+
+BullMQ v6 removed the `paused` job state: `getJobState` never returns `"paused"` (a paused queue's jobs report `"waiting"`), and `getJobCounts` no longer has a `paused` key. Use `isPaused` to check the queue itself.
 
 ## `bull run`
 
@@ -66,9 +70,18 @@ Non-terminal actions:
 - `getFailedChildrenValues`
 - `removeUnprocessedChildren`
 
+Cancellation actions (BullMQ v6 cooperative cancellation):
+
+- `cancelJob`: cancels the active job identified by `msg.bull.ackId`. Reason comes from `msg.reason`, default `"BullMQ job cancelled"`. Outputs `true`. If BullMQ reports the job as no longer cancellable, the node raises an error naming the job id instead of sending a message.
+- `cancelAllJobs`: cancels every active manual-mode job on the `bull run` node that owns `msg.bull.ackId`. Same `msg.reason` default. Always outputs `true`.
+
+Both actions are acknowledgement-scoped: like every `bull job` action, they act on the job behind `msg.bull.ackId`, so they only work for manual-completion jobs that have not yet settled (completed, failed, or timed out). Cancelling aborts the worker's per-job signal, which fails the pending acknowledgement; BullMQ then applies the queue's normal attempts/backoff retry policy to the job. Cancellation does not itself complete or remove the job.
+
 ## `bull events`
 
-QueueEvents source node. An empty event filter subscribes to: `active`, `added`, `cleaned`, `completed`, `deduplicated`, `delayed`, `drained`, `duplicated`, `failed`, `paused`, `progress`, `removed`, `resumed`, `stalled`, `waiting`, and `waiting-children`.
+QueueEvents source node. An empty event filter subscribes to: `active`, `added`, `cleaned`, `completed`, `deduplicated`, `delayed`, `drained`, `duplicated`, `failed`, `paused`, `progress`, `removed`, `resumed`, `retries-exhausted`, `stalled`, `waiting`, and `waiting-children`.
+
+`retries-exhausted` is new in 2.0.0. A flow already deployed with an empty event filter now receives this extra event type without any config change.
 
 Output:
 
@@ -84,3 +97,5 @@ Input:
 
 - `msg.payload`: BullMQ flow tree;
 - `msg.flowopts`: optional FlowProducer options.
+
+A child job in the tree that does not set `opts.jobId` gets a UUID as its job id (BullMQ v6 no longer assigns incremental numeric ids). Set `opts.jobId` on a child explicitly if the flow depends on a stable or predictable id.

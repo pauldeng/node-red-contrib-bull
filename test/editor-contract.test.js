@@ -186,20 +186,20 @@ test("help documents runtime node fields and message examples", () => {
 
 test("help links BullMQ API references to official API docs", () => {
   const expectedLinks = [
-    "https://api.docs.bullmq.io/classes/v5.Queue.html",
-    "https://api.docs.bullmq.io/interfaces/v5.QueueOptions.html",
-    "https://api.docs.bullmq.io/classes/v5.Queue.html#add",
-    "https://api.docs.bullmq.io/types/v5.JobsOptions.html",
-    "https://api.docs.bullmq.io/types/v5.DeduplicationOptions.html",
-    "https://api.docs.bullmq.io/classes/v5.Queue.html#setglobalratelimit",
-    "https://api.docs.bullmq.io/classes/v5.Queue.html#upsertjobscheduler",
-    "https://api.docs.bullmq.io/classes/v5.Worker.html",
-    "https://api.docs.bullmq.io/interfaces/v5.WorkerOptions.html",
-    "https://api.docs.bullmq.io/classes/v5.Job.html",
-    "https://api.docs.bullmq.io/classes/v5.UnrecoverableError.html",
-    "https://api.docs.bullmq.io/classes/v5.QueueEvents.html",
-    "https://api.docs.bullmq.io/classes/v5.FlowProducer.html",
-    "https://api.docs.bullmq.io/types/v5.FlowJob.html",
+    "https://docs.bullmq.io/api/classes/v6.Queue.html",
+    "https://docs.bullmq.io/api/interfaces/v6.QueueOptions.html",
+    "https://docs.bullmq.io/api/classes/v6.Queue.html#add",
+    "https://docs.bullmq.io/api/types/v6.JobsOptions.html",
+    "https://docs.bullmq.io/api/types/v6.DeduplicationOptions.html",
+    "https://docs.bullmq.io/api/classes/v6.Queue.html#setglobalratelimit",
+    "https://docs.bullmq.io/api/classes/v6.Queue.html#upsertjobscheduler",
+    "https://docs.bullmq.io/api/classes/v6.Worker.html",
+    "https://docs.bullmq.io/api/interfaces/v6.WorkerOptions.html",
+    "https://docs.bullmq.io/api/classes/v6.Job.html",
+    "https://docs.bullmq.io/api/classes/v6.UnrecoverableError.html",
+    "https://docs.bullmq.io/api/classes/v6.QueueEvents.html",
+    "https://docs.bullmq.io/api/classes/v6.FlowProducer.html",
+    "https://docs.bullmq.io/api/types/v6.FlowJob.html",
   ];
 
   for (const link of expectedLinks) {

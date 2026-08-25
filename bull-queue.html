@@ -158,7 +158,7 @@
 
 <script type="text/html" data-help-name="bull-queue-server">
   <p>Configures the BullMQ queue name and Redis connection shared by the BullMQ nodes.</p>
-  <p>API reference: <a href="https://api.docs.bullmq.io/classes/v5.Queue.html" target="_blank" rel="noopener noreferrer">Queue</a> and <a href="https://api.docs.bullmq.io/interfaces/v5.QueueOptions.html" target="_blank" rel="noopener noreferrer">QueueOptions</a>.</p>
+  <p>API reference: <a href="https://docs.bullmq.io/api/classes/v6.Queue.html" target="_blank" rel="noopener noreferrer">Queue</a> and <a href="https://docs.bullmq.io/api/interfaces/v6.QueueOptions.html" target="_blank" rel="noopener noreferrer">QueueOptions</a>.</p>
 
   <h3>Options</h3>
   <ul>
@@ -206,7 +206,7 @@
 
 <script type="text/html" data-help-name="bull cmd">
   <p>Executes BullMQ producer and queue-administration commands from an input message.</p>
-  <p>API reference: <a href="https://api.docs.bullmq.io/classes/v5.Queue.html" target="_blank" rel="noopener noreferrer">Queue</a>, <a href="https://api.docs.bullmq.io/classes/v5.Queue.html#add" target="_blank" rel="noopener noreferrer">Queue.add</a>, <a href="https://api.docs.bullmq.io/types/v5.JobsOptions.html" target="_blank" rel="noopener noreferrer">JobsOptions</a>, <a href="https://api.docs.bullmq.io/types/v5.DeduplicationOptions.html" target="_blank" rel="noopener noreferrer">DeduplicationOptions</a>, <a href="https://api.docs.bullmq.io/classes/v5.Queue.html#setglobalratelimit" target="_blank" rel="noopener noreferrer">Queue.setGlobalRateLimit</a>, and <a href="https://api.docs.bullmq.io/classes/v5.Queue.html#upsertjobscheduler" target="_blank" rel="noopener noreferrer">Queue.upsertJobScheduler</a>.</p>
+  <p>API reference: <a href="https://docs.bullmq.io/api/classes/v6.Queue.html" target="_blank" rel="noopener noreferrer">Queue</a>, <a href="https://docs.bullmq.io/api/classes/v6.Queue.html#add" target="_blank" rel="noopener noreferrer">Queue.add</a>, <a href="https://docs.bullmq.io/api/types/v6.JobsOptions.html" target="_blank" rel="noopener noreferrer">JobsOptions</a>, <a href="https://docs.bullmq.io/api/types/v6.DeduplicationOptions.html" target="_blank" rel="noopener noreferrer">DeduplicationOptions</a>, <a href="https://docs.bullmq.io/api/classes/v6.Queue.html#setglobalratelimit" target="_blank" rel="noopener noreferrer">Queue.setGlobalRateLimit</a>, and <a href="https://docs.bullmq.io/api/classes/v6.Queue.html#upsertjobscheduler" target="_blank" rel="noopener noreferrer">Queue.upsertJobScheduler</a>.</p>
 
   <h3>Options</h3>
   <ul>
@@ -216,8 +216,8 @@
 
   <h3>Input message</h3>
   <ul>
-    <li><code>msg.cmd</code>: Command name. Defaults to <code>add</code>. Common commands include <code>add</code>, <code>addBulk</code>, <code>getJob</code>, <code>getJobs</code>, <code>removeJob</code>, <code>retryJob</code>, <code>getDelayed</code>, <code>promoteJob</code>, <code>getPrioritized</code>, <code>changePriority</code>, <code>setGlobalRateLimit</code>, <code>removeGlobalRateLimit</code>, <code>upsertJobScheduler</code>, and <code>removeJobScheduler</code>.</li>
-    <li><code>msg.payload</code>: Job data for <code>add</code> when <code>msg.jobData</code> is not set. For some commands it carries command parameters, such as <code>{ "max": 2, "duration": 1000 }</code> for <code>setGlobalRateLimit</code>.</li>
+    <li><code>msg.cmd</code>: Command name. Defaults to <code>add</code>. Common commands include <code>add</code>, <code>addBulk</code>, <code>getJob</code>, <code>getJobs</code>, <code>removeJob</code>, <code>retryJob</code>, <code>getDelayed</code>, <code>promoteJob</code>, <code>getPrioritized</code>, <code>changePriority</code>, <code>setGlobalRateLimit</code>, <code>removeGlobalRateLimit</code>, <code>upsertJobScheduler</code>, <code>removeJobScheduler</code>, <code>isPaused</code>, <code>isMaxed</code>, and <code>getVersion</code>.</li>
+    <li><code>msg.payload</code>: Job data for <code>add</code> when <code>msg.jobData</code> is not set. For some commands it carries command parameters, such as <code>{ "max": 2, "duration": 1000 }</code> for <code>setGlobalRateLimit</code>. <code>isPaused</code> and <code>isMaxed</code> return a boolean; <code>getVersion</code> returns BullMQ's queue metadata version string (for example <code>bullmq:6.2.1</code>), not the Redis server version.</li>
     <li><code>msg.jobName</code>: BullMQ job name for <code>add</code>. Defaults to <code>default</code>.</li>
     <li><code>msg.jobData</code>: Full job data object for <code>add</code>. When set, it takes precedence over <code>msg.payload</code>.</li>
     <li><code>msg.jobopts</code>: BullMQ job options for <code>add</code>, including <code>delay</code>, <code>priority</code>, <code>deduplication</code>, <code>attempts</code>, <code>backoff</code>, <code>removeOnComplete</code>, and <code>repeat</code>.</li>
@@ -256,6 +256,8 @@ msg.jobopts = {
 };
 return msg;</pre>
   <p>Legacy <code>msg.jobopts.repeat.cron</code> is translated to a BullMQ Job Scheduler. Legacy repeat lookup and removal commands use exact scheduler ids.</p>
+  <p>BullMQ v6 removed its own repeatable-job API. This node keeps <code>getRepeatableJobs</code>, <code>removeRepeatableByKey</code>, <code>getRepeatableJobByKey</code>, and <code>count</code> working as this package's own aliases onto Job Schedulers (<code>getJobSchedulers</code>, <code>removeJobScheduler</code>, <code>getJobScheduler</code>, and <code>getJobSchedulersCount</code>).</p>
+  <p>BullMQ v6 removed the <code>paused</code> job state, so <code>getJobCounts</code> no longer includes a <code>paused</code> key in its result.</p>
 </script>
 
 <script type="text/javascript">
@@ -312,7 +314,7 @@ return msg;</pre>
 
 <script type="text/html" data-help-name="bull run">
   <p>Creates a BullMQ Worker for the configured queue and emits each job as a Node-RED message.</p>
-  <p>API reference: <a href="https://api.docs.bullmq.io/classes/v5.Worker.html" target="_blank" rel="noopener noreferrer">Worker</a> and <a href="https://api.docs.bullmq.io/interfaces/v5.WorkerOptions.html" target="_blank" rel="noopener noreferrer">WorkerOptions</a>.</p>
+  <p>API reference: <a href="https://docs.bullmq.io/api/classes/v6.Worker.html" target="_blank" rel="noopener noreferrer">Worker</a> and <a href="https://docs.bullmq.io/api/interfaces/v6.WorkerOptions.html" target="_blank" rel="noopener noreferrer">WorkerOptions</a>.</p>
 
   <h3>Options</h3>
   <ul>
@@ -331,6 +333,9 @@ return msg;</pre>
     <li><code>msg.job</code>: Serialized job metadata, including id, name, queue name, state-related timestamps, progress, attempts, and options.</li>
     <li><code>msg.bull</code>: Queue and acknowledgement context used by downstream <code>bull job</code> nodes.</li>
   </ul>
+
+  <p>BullMQ v6 removed the <code>paused</code> job state: <code>job.getState()</code> never returns <code>"paused"</code>, so a job on a paused queue reports as <code>"waiting"</code>.</p>
+  <p>Only jobs from a <b>Completion</b> <code>Manual acknowledgement</code> worker can be cancelled through <code>bull job</code>'s <code>cancelJob</code> and <code>cancelAllJobs</code> actions, since cancellation is scoped to <code>msg.bull.ackId</code>.</p>
 
   <h3>Example</h3>
   <p>For fire-and-forget processing, use <b>Completion</b> <code>Immediate</code> and wire the output to your processing flow.</p>
@@ -413,13 +418,15 @@ return msg;</pre>
       <option value="getChildrenValues">Get children values</option>
       <option value="getFailedChildrenValues">Get failed children values</option>
       <option value="removeUnprocessedChildren">Remove unprocessed children</option>
+      <option value="cancelJob">Cancel job</option>
+      <option value="cancelAllJobs">Cancel all jobs</option>
     </select>
   </div>
 </script>
 
 <script type="text/html" data-help-name="bull job">
   <p>Acts on an active job emitted by a manual-mode <code>bull run</code> node.</p>
-  <p>API reference: <a href="https://api.docs.bullmq.io/classes/v5.Job.html" target="_blank" rel="noopener noreferrer">Job</a> and <a href="https://api.docs.bullmq.io/classes/v5.UnrecoverableError.html" target="_blank" rel="noopener noreferrer">UnrecoverableError</a>.</p>
+  <p>API reference: <a href="https://docs.bullmq.io/api/classes/v6.Job.html" target="_blank" rel="noopener noreferrer">Job</a>, <a href="https://docs.bullmq.io/api/classes/v6.UnrecoverableError.html" target="_blank" rel="noopener noreferrer">UnrecoverableError</a>, and <a href="https://docs.bullmq.io/api/classes/v6.Worker.html#canceljob" target="_blank" rel="noopener noreferrer">Worker.cancelJob</a>.</p>
 
   <h3>Options</h3>
   <ul>
@@ -438,6 +445,8 @@ return msg;</pre>
     <li><code>getChildrenValues</code>: Reads completed child return values for a flow parent job.</li>
     <li><code>getFailedChildrenValues</code>: Reads failed child values for a flow parent job.</li>
     <li><code>removeUnprocessedChildren</code>: Removes children that have not yet been processed.</li>
+    <li><code>cancelJob</code>: Cancels the active job by aborting its processor signal, which fails the job and lets the queue's normal attempts/backoff retry policy apply. Acknowledgement-scoped: it needs <code>msg.bull.ackId</code>, so it only reaches manual-completion jobs that have not yet settled. <code>msg.reason</code> sets the cancellation reason, default <code>"BullMQ job cancelled"</code>. Outputs <code>true</code> on <code>msg.payload</code>; if BullMQ reports no cancellable processor for the job, the node raises an error instead.</li>
+    <li><code>cancelAllJobs</code>: Cancels every active manual job on the same <code>bull run</code> node the same way as <code>cancelJob</code>. <code>msg.reason</code> sets the cancellation reason, default <code>"BullMQ job cancelled"</code>. Outputs <code>true</code> on <code>msg.payload</code>.</li>
   </ul>
 
   <h3>Example</h3>
@@ -491,14 +500,15 @@ return msg;</pre>
 
 <script type="text/html" data-help-name="bull events">
   <p>Subscribes to BullMQ QueueEvents and emits global queue events as Node-RED messages.</p>
-  <p>API reference: <a href="https://api.docs.bullmq.io/classes/v5.QueueEvents.html" target="_blank" rel="noopener noreferrer">QueueEvents</a>.</p>
+  <p>API reference: <a href="https://docs.bullmq.io/api/classes/v6.QueueEvents.html" target="_blank" rel="noopener noreferrer">QueueEvents</a>.</p>
 
   <h3>Options</h3>
   <ul>
     <li><b>Name</b>: Optional label shown in the Node-RED workspace.</li>
     <li><b>Queue</b>: Queue config node whose global events will be observed.</li>
-    <li><b>Events</b>: Comma or newline separated event names. Leave empty to subscribe to the default set. Useful events include <code>completed</code>, <code>failed</code>, <code>progress</code>, <code>delayed</code>, <code>deduplicated</code>, <code>duplicated</code>, <code>waiting</code>, and <code>active</code>.</li>
+    <li><b>Events</b>: Comma or newline separated event names. Leave empty to subscribe to the default set. Useful events include <code>completed</code>, <code>failed</code>, <code>progress</code>, <code>delayed</code>, <code>deduplicated</code>, <code>duplicated</code>, <code>waiting</code>, <code>active</code>, and <code>retries-exhausted</code>.</li>
   </ul>
+  <p><code>retries-exhausted</code> is part of the default event set. A flow that leaves <b>Events</b> empty now receives this event in addition to the previous defaults.</p>
 
   <h3>Output message</h3>
   <ul>
@@ -543,7 +553,7 @@ return msg;</pre>
 
 <script type="text/html" data-help-name="bull flow">
   <p>Adds atomic BullMQ parent and child job trees with <code>FlowProducer</code>.</p>
-  <p>API reference: <a href="https://api.docs.bullmq.io/classes/v5.FlowProducer.html" target="_blank" rel="noopener noreferrer">FlowProducer</a> and <a href="https://api.docs.bullmq.io/types/v5.FlowJob.html" target="_blank" rel="noopener noreferrer">FlowJob</a>.</p>
+  <p>API reference: <a href="https://docs.bullmq.io/api/classes/v6.FlowProducer.html" target="_blank" rel="noopener noreferrer">FlowProducer</a> and <a href="https://docs.bullmq.io/api/types/v6.FlowJob.html" target="_blank" rel="noopener noreferrer">FlowJob</a>.</p>
 
   <h3>Options</h3>
   <ul>
@@ -556,6 +566,8 @@ return msg;</pre>
     <li><code>msg.payload</code>: BullMQ flow tree. The root object contains <code>name</code>, <code>queueName</code>, <code>data</code>, optional <code>opts</code>, and optional <code>children</code>.</li>
     <li><code>msg.flowopts</code>: Optional FlowProducer options applied to the add call.</li>
   </ul>
+
+  <p>A child job without an explicit <code>opts.jobId</code> gets a UUID from BullMQ v6, not the incremental numeric id used before.</p>
 
   <h3>Example</h3>
   <pre>msg.payload = {

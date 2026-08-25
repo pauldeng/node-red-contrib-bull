@@ -13,7 +13,7 @@ function read(relativePath) {
 
 test("package metadata targets BullMQ, Node.js 22.9+, and Node-RED 5.x", () => {
   assert.equal(packageJson.name, "@pauldeng/node-red-contrib-bullmq");
-  assert.equal(packageJson.version, "1.0.3");
+  assert.equal(packageJson.version, "2.0.0");
   assert.equal(packageJson.main, "bull-queue.js");
   assert.equal(
     packageJson.description,

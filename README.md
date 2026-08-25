@@ -8,7 +8,7 @@
 
 Node-RED nodes for BullMQ-backed Redis job queues.
 
-This package targets BullMQ 5.80.9 and Node-RED 5. It preserves the legacy `bull-queue-server`, `bull cmd`, and `bull run` node types where BullMQ has compatible behavior, and adds `bull job`, `bull events`, and `bull flow`.
+This package targets BullMQ 6.2.1 and Node-RED 5. It preserves the legacy `bull-queue-server`, `bull cmd`, and `bull run` node types where BullMQ has compatible behavior, and adds `bull job`, `bull events`, and `bull flow`.
 
 ## Installation
 
@@ -26,9 +26,9 @@ Repository: <https://github.com/pauldeng/node-red-contrib-bullmq>
 - Node-RED 5.x
 - Node.js 22.9+
 - Redis with `maxmemory-policy=noeviction`
-- BullMQ 5.80.9
+- BullMQ 6.2.1
 
-Bull v4 Redis data is not automatically migrated. Drain, retire, or otherwise handle old Bull queues before upgrading the runtime dependency.
+Bull v4 Redis data is not automatically migrated. Drain, retire, or otherwise handle old Bull queues before upgrading the runtime dependency. Upgrading from a BullMQ v5 release of this package has its own steps; see [docs/MIGRATION.md](docs/MIGRATION.md).
 
 ## Nodes
 
@@ -120,6 +120,7 @@ Use [docs/TESTING.md](docs/TESTING.md) for Docker, Playwright, and MemoryDB test
 - [Architecture](docs/ARCHITECTURE.md)
 - [Node Guide](docs/NODE_GUIDE.md)
 - [Connection Guide](docs/CONNECTIONS.md)
+- [Telemetry Guide](docs/TELEMETRY.md)
 - [Migration Guide](docs/MIGRATION.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Changelog](CHANGELOG.md)

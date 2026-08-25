@@ -218,6 +218,38 @@
     "wires": [["cmd-repeatable-jobs"]]
   },
   {
+    "id": "inject-repeat-utc",
+    "type": "inject",
+    "z": "flow-repeatable-jobs",
+    "name": "repeat: add job with repeat.utc",
+    "props": [{ "p": "payload" }],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "payload": "gateway-legacy-utc-demo",
+    "payloadType": "str",
+    "x": 200,
+    "y": 580,
+    "wires": [["fn-repeat-utc"]]
+  },
+  {
+    "id": "fn-repeat-utc",
+    "type": "function",
+    "z": "flow-repeatable-jobs",
+    "name": "add repeat cron with legacy utc",
+    "func": "msg.cmd = \"add\";\nmsg.jobopts = {\"jobId\": msg.payload, \"repeat\": {\"cron\": \"30 9,19,29,39,49,59 * * * *\", \"utc\": true}};\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 470,
+    "y": 580,
+    "wires": [["cmd-repeatable-jobs"]]
+  },
+  {
     "id": "cmd-repeatable-jobs",
     "type": "bull cmd",
     "z": "flow-repeatable-jobs",

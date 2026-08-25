@@ -41,7 +41,7 @@ test("agent instructions keep global rules and the Claude import discoverable", 
 test("README documents BullMQ migration, supported deployments, and unsupported features", () => {
   const readme = read("README.md");
   for (const text of [
-    "BullMQ 5.80.9",
+    "BullMQ 6.2.1",
     "Node-RED 5",
     "Node.js 22.9",
     "@pauldeng/node-red-contrib-bullmq",
@@ -358,7 +358,7 @@ test("maintained docs match current BullMQ runtime contracts", () => {
   assert.match(release, /Code scanning.*default setup/i);
 
   for (const text of [
-    "BullMQ 5.80.9",
+    "BullMQ 6.2.1",
     "ioredis 5.11.1",
     "resource",
     "URL credentials",
