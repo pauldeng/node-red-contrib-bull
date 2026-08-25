@@ -41,8 +41,8 @@ test("README documents BullMQ migration, supported deployments, and unsupported 
   const readme = read("README.md");
   for (const text of [
     "BullMQ 5.80.9",
-    "Node-RED 4.1",
-    "Node.js 18",
+    "Node-RED 5",
+    "Node.js 22.9",
     "@pauldeng/node-red-contrib-bullmq",
     "npm install @pauldeng/node-red-contrib-bullmq",
     "https://github.com/pauldeng/node-red-contrib-bullmq",
@@ -233,7 +233,7 @@ test("repository text does not contain MemoryDB secret assignments", () => {
   }
 });
 
-test("public package docs and helpers use the BullMQ repo name and Node.js 18 support", () => {
+test("public package docs and helpers use the BullMQ repo name and Node.js 22.9 support", () => {
   const files = [
     "README.md",
     "docs/REFERENCE_MAP.md",
@@ -268,8 +268,13 @@ test("public package docs and helpers use the BullMQ repo name and Node.js 18 su
     /Node\.js 24|Node\.js 24\+|>=24/,
     "Node.js 24 must not remain the public runtime floor",
   );
+  assert.doesNotMatch(
+    allText,
+    /Node\.js 18|Node\.js 20|Node-RED 4\.1|>=4\.1\.0/,
+    "the retired Node.js 18 / Node-RED 4.1 floors must not creep back",
+  );
   assert.match(allText, /github\.com\/pauldeng\/node-red-contrib-bullmq/);
-  assert.match(allText, /Node\.js 18/);
+  assert.match(allText, /Node\.js 22\.9/);
 });
 
 test("maintained docs match current BullMQ runtime contracts", () => {

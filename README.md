@@ -8,7 +8,7 @@
 
 Node-RED nodes for BullMQ-backed Redis job queues.
 
-This package targets BullMQ 5.80.9 and Node-RED 4.1 or 5.x. It preserves the legacy `bull-queue-server`, `bull cmd`, and `bull run` node types where BullMQ has compatible behavior, and adds `bull job`, `bull events`, and `bull flow`.
+This package targets BullMQ 5.80.9 and Node-RED 5. It preserves the legacy `bull-queue-server`, `bull cmd`, and `bull run` node types where BullMQ has compatible behavior, and adds `bull job`, `bull events`, and `bull flow`.
 
 ## Installation
 
@@ -23,8 +23,8 @@ Repository: <https://github.com/pauldeng/node-red-contrib-bullmq>
 
 ## Requirements
 
-- Node-RED 4.1.x or 5.x
-- Node.js 18+ with Node-RED 4.1.x, or Node.js 22.9+ with Node-RED 5.x
+- Node-RED 5.x
+- Node.js 22.9+
 - Redis with `maxmemory-policy=noeviction`
 - BullMQ 5.80.9
 

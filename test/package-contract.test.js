@@ -11,7 +11,7 @@ function read(relativePath) {
   return fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 }
 
-test("package metadata targets BullMQ, Node.js 18+, and Node-RED 4.1/5.x", () => {
+test("package metadata targets BullMQ, Node.js 22.9+, and Node-RED 5.x", () => {
   assert.equal(packageJson.name, "@pauldeng/node-red-contrib-bullmq");
   assert.equal(packageJson.version, "1.0.3");
   assert.equal(packageJson.main, "bull-queue.js");
@@ -59,8 +59,8 @@ test("package metadata targets BullMQ, Node.js 18+, and Node-RED 4.1/5.x", () =>
     undefined,
   );
 
-  assert.equal(packageJson.engines?.node, ">=18");
-  assert.equal(packageJson["node-red"]?.version, ">=4.1.0 <6");
+  assert.equal(packageJson.engines?.node, ">=22.9");
+  assert.equal(packageJson["node-red"]?.version, ">=5.0.0 <6");
 
   assert.equal(packageJson.devDependencies?.["@playwright/test"], "1.62.1");
   assert.equal(packageJson.devDependencies?.["node-red"], "5.0.4");

@@ -12,7 +12,7 @@
     "docs/*.md"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=22.9"
   },
   "scripts": {
     "test": "node --test test/*.test.js",
@@ -40,7 +40,7 @@
     "jobs"
   ],
   "node-red": {
-    "version": ">=4.1.0 <6",
+    "version": ">=5.0.0 <6",
     "nodes": {
       "bull-queue": "bull-queue.js"
     }
