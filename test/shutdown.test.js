@@ -344,6 +344,130 @@ test("config close starts independent resource pairs concurrently", async () => 
   }
 });
 
+test("config close force-disconnects by awaiting the public disconnect() API", async () => {
+  const RED = createRED();
+  registerBullMQNodes(RED);
+  const server = buildServerNode(RED);
+
+  const neverGate = new EventEmitter();
+  const events = [];
+  const owner = {
+    async close() {
+      // Never settles, forcing the CLOSE_GRACE_MS fallback to fire.
+      await once(neverGate, "release");
+    },
+    async disconnect() {
+      events.push("disconnect-start");
+      await delay(30);
+      events.push("disconnect-end");
+    },
+    get connection() {
+      throw new Error("must not read resource.connection");
+    },
+    get blockingConnection() {
+      throw new Error("must not read resource.blockingConnection");
+    },
+    get _client() {
+      throw new Error("must not read resource._client");
+    },
+    getBackend() {
+      throw new Error("must not call resource.getBackend()");
+    },
+  };
+  const connection = { async close() {} };
+  server.resources = new Map([[owner, connection]]);
+
+  try {
+    const result = await settleWithin(invokeClose(server), CLOSE_DEADLINE_MS);
+    assert.equal(
+      result,
+      "closed",
+      "config close must settle by force-disconnecting through disconnect()",
+    );
+    assert.deepEqual(
+      events,
+      ["disconnect-start", "disconnect-end"],
+      "close must call and fully await resource.disconnect(), not fire-and-forget it",
+    );
+  } finally {
+    neverGate.emit("release");
+    forceCleanup(server);
+  }
+});
+
+// Measured against installed BullMQ 6.2.1: when the connection never became
+// ready (e.g. Redis unreachable), disconnect() itself awaits the same
+// ready-promise as close() and never settles either -- confirmed with a
+// direct QueueEvents.disconnect() run against a dead Redis (see report). So
+// the fallback below is required, not optional: when disconnect() ALSO times
+// out, forceDisconnect must escalate to the backend's raw clients so the
+// process can still exit.
+test("config close escalates to the backend's raw clients when disconnect() also hangs", async () => {
+  const RED = createRED();
+  registerBullMQNodes(RED);
+  const server = buildServerNode(RED);
+
+  const neverGate = new EventEmitter();
+  const rawDisconnectCalls = [];
+  const fakeClient = (name) => ({
+    disconnect(wait) {
+      rawDisconnectCalls.push({ name, wait });
+    },
+  });
+  const stopped = [];
+  const owner = {
+    async close() {
+      await once(neverGate, "release");
+    },
+    async disconnect() {
+      await once(neverGate, "release");
+    },
+    getBackend() {
+      return {
+        connection: { _client: fakeClient("connection") },
+        blockingConnection: { _client: fakeClient("blockingConnection") },
+      };
+    },
+    // A Worker keeps two self-rescheduling timers that only its own close()
+    // clears, and that close() is exactly what hung above.
+    lockManager: {
+      async close() {
+        stopped.push("lockManager");
+      },
+    },
+    stalledCheckStopper() {
+      stopped.push("stalledChecker");
+    },
+  };
+  const connection = { async close() {} };
+  server.resources = new Map([[owner, connection]]);
+
+  try {
+    const result = await settleWithin(invokeClose(server), CLOSE_DEADLINE_MS);
+    assert.equal(
+      result,
+      "closed",
+      "config close must settle even when both close() and disconnect() hang",
+    );
+    assert.deepEqual(
+      rawDisconnectCalls.sort((a, b) => a.name.localeCompare(b.name)),
+      [
+        { name: "blockingConnection", wait: false },
+        { name: "connection", wait: false },
+      ],
+      "forceDisconnect must fall back to disconnecting the backend's raw clients",
+    );
+    assert.deepEqual(
+      stopped.sort(),
+      ["lockManager", "stalledChecker"],
+      "forceDisconnect must stop the worker timers that the hung close() never reached",
+    );
+  } finally {
+    neverGate.emit("release");
+    forceCleanup(server);
+  }
+});
+
 test("bull run reports a uniform disconnected status when Redis is unreachable", async () => {
   let server;
   const statuses = [];

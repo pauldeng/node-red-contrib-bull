@@ -268,6 +268,28 @@ test("maps job listing commands and serializes jobs", async () => {
   ]);
 });
 
+test("addBulk rejects repeat options anywhere in the batch", async () => {
+  const queue = createRecordingQueue();
+  const bulk = [
+    { name: "a", data: {}, opts: { jobId: "a" } },
+    { name: "b", data: {}, opts: { repeat: { pattern: "*/5 * * * *" } } },
+  ];
+
+  await assert.rejects(
+    () => dispatchCommand(queue, { cmd: "addBulk", payload: bulk }),
+    /upsertJobScheduler/,
+  );
+  assert.deepEqual(queue.calls, []);
+});
+
+test("addBulk with a non-array payload keeps its existing pass-through behaviour", async () => {
+  const queue = createRecordingQueue({ addBulk: [] });
+
+  await dispatchCommand(queue, { cmd: "addBulk", payload: "not-an-array" });
+
+  assert.deepEqual(queue.calls, [["addBulk", "not-an-array"]]);
+});
+
 test("maps commands that require an existing job", async () => {
   const job = createJobStub();
   const queue = createRecordingQueue({ getJob: job });
