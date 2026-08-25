@@ -26,6 +26,7 @@ test("agent and user documentation files exist", () => {
     "docs/MIGRATION.md",
     "docs/COMMANDS.md",
     "docs/CONNECTIONS.md",
+    "docs/TELEMETRY.md",
     "docs/RELEASE.md",
   ]) {
     assert.ok(fs.existsSync(path.join(repoRoot, file)), `${file} missing`);
@@ -217,6 +218,7 @@ test("repository text does not contain MemoryDB secret assignments", () => {
     "docs/MIGRATION.md",
     "docs/COMMANDS.md",
     "docs/CONNECTIONS.md",
+    "docs/TELEMETRY.md",
     "examples/README.md",
     "examples/example_flow.json",
     "examples/bullmq_features.json",
@@ -246,6 +248,7 @@ test("public package docs and helpers use the BullMQ repo name and Node.js 22.9 
     "docs/MIGRATION.md",
     "docs/COMMANDS.md",
     "docs/CONNECTIONS.md",
+    "docs/TELEMETRY.md",
     "examples/README.md",
     "package.json",
     "package-lock.json",

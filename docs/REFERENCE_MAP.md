@@ -26,6 +26,7 @@
 - `test/node-red-registration.test.js`: Node-RED node type registration.
 - `test/editor-contract.test.js`: static editor surface.
 - `test/docs-contract.test.js`: required docs and examples.
+- `test/telemetry.test.js`: opt-in telemetry wiring, including the QueueEvents exclusion.
 - `test/docker-matrix-contract.test.js`: Docker deployment fixture and runner contract.
 - `test/integration-standalone.test.js`: opt-in local Redis Node-RED runtime flow tests for add/run, manual acknowledgement, repeat schedulers, delayed jobs, priorities, rate limits, deduplication events, and flow producer jobs.
 - `test/integration-deployment.test.js`: opt-in external Redis deployment flow test used by Docker and MemoryDB.
@@ -54,6 +55,7 @@
 - `docs/NODE_GUIDE.md`: node behavior.
 - `docs/COMMANDS.md`: command reference.
 - `docs/CONNECTIONS.md`: Redis deployments.
+- `docs/TELEMETRY.md`: opt-in OpenTelemetry tracing and metrics.
 - `docs/MIGRATION.md`: Bull v4 migration.
 - `docs/TESTING.md`: verification plan.
 - `docs/TROUBLESHOOTING.md`: operational issues.

@@ -22,6 +22,7 @@ const {
   normalizeQueueConfig,
 } = require("./lib/connections");
 const { serializeFlowJob, serializeJob } = require("./lib/serialization");
+const { version: PACKAGE_VERSION } = require("./package.json");
 
 const DEFAULT_EVENTS = [
   "active",
@@ -260,6 +261,42 @@ module.exports = function registerBullMQNodes(RED) {
     node.config = normalizeQueueConfig(n, node.credentials || {});
     node.queue = null;
     node.producerConnection = null;
+    node.telemetry = undefined;
+    node.telemetryUnavailable = false;
+
+    // Lazily constructs (and caches) the one BullMQOtel instance shared by
+    // this config node's Queue/Worker/FlowProducer. Deferred until first
+    // resource creation rather than built in the constructor above: Node-RED
+    // builds config nodes at deploy time, which can precede the host's
+    // OpenTelemetry bootstrap, and enableMetrics needs a MeterProvider
+    // registered before BullMQOtel is constructed.
+    node.getTelemetry = function getTelemetry() {
+      if (!node.config.telemetry) {
+        return undefined;
+      }
+      if (node.telemetry || node.telemetryUnavailable) {
+        return node.telemetry;
+      }
+      let BullMQOtel;
+      try {
+        ({ BullMQOtel } = require("bullmq-otel"));
+      } catch (err) {
+        node.telemetryUnavailable = true;
+        node.error(
+          "BullMQ telemetry is enabled but bullmq-otel is not installed; run npm install bullmq-otel",
+        );
+        return undefined;
+      }
+      const serviceName =
+        node.config.telemetryServiceName || node.config.queueName;
+      node.telemetry = new BullMQOtel({
+        tracerName: serviceName,
+        meterName: serviceName,
+        version: PACKAGE_VERSION,
+        enableMetrics: node.config.telemetryMetrics,
+      });
+      return node.telemetry;
+    };
 
     node.register = function register(bullNode) {
       node.users[bullNode.id] = bullNode;
@@ -300,7 +337,11 @@ module.exports = function registerBullMQNodes(RED) {
         node.producerConnection.setMaxListeners(0);
         node.queue = new Queue(
           node.config.queueName,
-          buildBullMQOptions(node.config, node.producerConnection)
+          buildBullMQOptions(
+            node.config,
+            node.producerConnection,
+            node.getTelemetry(),
+          )
         );
         node.resources.set(node.queue, node.producerConnection);
         attachErrorListener(node.queue, node);
@@ -321,7 +362,7 @@ module.exports = function registerBullMQNodes(RED) {
     node.createWorker = function createWorker(processor, options, owner = node) {
       const connection = node.createConnection("worker", owner);
       const worker = new Worker(node.config.queueName, processor, {
-        ...buildBullMQOptions(node.config, connection),
+        ...buildBullMQOptions(node.config, connection, node.getTelemetry()),
         ...options,
       });
       node.resources.set(worker, connection);
@@ -341,7 +382,7 @@ module.exports = function registerBullMQNodes(RED) {
     node.createFlowProducer = function createFlowProducer(owner = node) {
       const connection = node.createConnection("producer", owner);
       const flowProducer = new FlowProducer(
-        buildBullMQOptions(node.config, connection)
+        buildBullMQOptions(node.config, connection, node.getTelemetry())
       );
       node.resources.set(flowProducer, connection);
       return flowProducer;
