@@ -33,6 +33,7 @@ jspm_packages
 
 # Local agent and generated index artifacts
 GOAL.md
+.claude/
 .codegraph/
 
 # Local credentials (never commit)
