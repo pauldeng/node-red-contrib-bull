@@ -11,9 +11,6 @@ coverage
 .codex
 .claude
 
-# External / generated documents
-docs/superpowers
-
 # Node-RED runtime and editor templates are maintained by hand and excluded
 bull-queue.js
 bull-queue.html
