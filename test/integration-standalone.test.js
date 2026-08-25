@@ -674,3 +674,99 @@ test(
     }
   },
 );
+
+test(
+  "bull job cancelJob aborts a live BullMQ worker processor",
+  { skip: !enabled },
+  async () => {
+    const redis = await startRedis();
+    const userDir = await startHelper();
+
+    try {
+      const flow = [
+        { id: "tab", type: "tab", label: "cancel" },
+        queueConfig("queue", "cancelcasts", redis),
+        {
+          id: "cmd",
+          type: "bull cmd",
+          z: "tab",
+          name: "cmd",
+          queue: "queue",
+          x: 180,
+          y: 120,
+          wires: [[]],
+        },
+        {
+          id: "events",
+          type: "bull events",
+          z: "tab",
+          name: "events",
+          queue: "queue",
+          events: "failed",
+          x: 180,
+          y: 320,
+          wires: [["events-out"]],
+        },
+        {
+          id: "events-out",
+          type: "helper",
+          z: "tab",
+          x: 380,
+          y: 320,
+          wires: [],
+        },
+        {
+          id: "run",
+          type: "bull run",
+          z: "tab",
+          name: "cancel worker",
+          queue: "queue",
+          completionMode: "manual",
+          ackTimeout: 300000,
+          concurrency: 1,
+          x: 180,
+          y: 220,
+          wires: [["cancel"]],
+        },
+        {
+          id: "cancel",
+          type: "bull job",
+          z: "tab",
+          name: "cancel",
+          action: "cancelJob",
+          x: 380,
+          y: 220,
+          wires: [["job-out"]],
+        },
+        { id: "job-out", type: "helper", z: "tab", x: 580, y: 220, wires: [] },
+      ];
+
+      await helper.load(bullNodes, flow);
+      const cmd = helper.getNode("cmd");
+      const jobOut = helper.getNode("job-out");
+      const eventsOut = helper.getNode("events-out");
+
+      const cancelOutput = waitForInput(jobOut);
+      const failedEvent = waitForInput(eventsOut);
+      cmd.receive({
+        cmd: "add",
+        payload: "cancel me",
+        jobopts: { attempts: 1, removeOnFail: false },
+      });
+
+      // Proves the arity-3 processor really did make BullMQ create and track an
+      // AbortController for this job: cancelJob returns false when no
+      // cancellable processor is registered.
+      assert.equal((await cancelOutput).payload, true);
+
+      // Aborting the signal does not settle the acknowledgement on its own, so
+      // this event only arrives if the abort listener failed the job.
+      const failed = await failedEvent;
+      assert.equal(failed.topic, "failed");
+      assert.match(failed.payload.failedReason, /BullMQ job cancelled/);
+    } finally {
+      await stopHelper(userDir);
+      redis.stop();
+    }
+  },
+);

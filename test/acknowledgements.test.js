@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const { EventEmitter, getEventListeners } = require("node:events");
 const { setTimeout: sleep } = require("node:timers/promises");
 const test = require("node:test");
 
@@ -6,6 +7,7 @@ const {
   AcknowledgementRegistry,
   parseAckTimeoutMs,
 } = require("../lib/acknowledgements");
+const registerBullMQNodes = require("../bull-queue");
 
 function context(overrides = {}) {
   return {
@@ -184,4 +186,288 @@ test("does not leak entries under repeated completion", async () => {
   // Give any asynchronous cleanup a chance to run.
   await sleep(0);
   assert.equal(registry.entries.size, 0);
+});
+
+// --- BullMQ v6 worker cancellation -----------------------------------------
+
+test("aborting the tracked signal rejects the acknowledgement with the abort reason and removes the entry", async () => {
+  const registry = new AcknowledgementRegistry();
+  const controller = new AbortController();
+  const { ackId, entry } = registry.create(
+    context({ signal: controller.signal }),
+    0,
+  );
+
+  const waiter = entry.wait();
+  controller.abort("cancelled by operator");
+
+  await assert.rejects(waiter, /cancelled by operator/);
+  assert.equal(registry.entries.size, 0);
+  assert.throws(() => registry.get(ackId), /Missing, stale/);
+});
+
+test("settling removes the abort listener so completion never leaks a listener on the signal", async () => {
+  const registry = new AcknowledgementRegistry();
+  const controller = new AbortController();
+  const { entry } = registry.create(context({ signal: controller.signal }), 0);
+
+  assert.equal(getEventListeners(controller.signal, "abort").length, 1);
+
+  const settled = entry.wait();
+  entry.complete("done");
+  await settled;
+
+  assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+});
+
+test("a completion that lands before a late abort wins the race", async () => {
+  const registry = new AcknowledgementRegistry();
+  const controller = new AbortController();
+  const { entry } = registry.create(context({ signal: controller.signal }), 0);
+
+  const waiter = entry.wait();
+  entry.complete("done-first");
+  controller.abort("too-late");
+
+  assert.equal(await waiter, "done-first");
+});
+
+// --- "bull job" cancelJob / cancelAllJobs, wired through bull-queue.js -----
+
+class FakeWorker {
+  constructor() {
+    this.tracked = new Map();
+    this.cancelJobCalls = [];
+    this.cancelAllJobsCalls = [];
+  }
+
+  track(jobId, controller) {
+    this.tracked.set(jobId, controller);
+  }
+
+  // Mirrors bullmq's LockManager: abort the tracked controller and report
+  // whether a cancellable processor was found for that job id.
+  cancelJob(jobId, reason) {
+    this.cancelJobCalls.push({ jobId, reason });
+    const controller = this.tracked.get(jobId);
+    if (!controller) {
+      return false;
+    }
+    controller.abort(reason);
+    return true;
+  }
+
+  cancelAllJobs(reason) {
+    this.cancelAllJobsCalls.push(reason);
+    for (const controller of this.tracked.values()) {
+      controller.abort(reason);
+    }
+  }
+
+  // attachErrorListener() and the run node's ready/closed status wiring
+  // expect an EventEmitter-shaped worker.
+  on() {}
+}
+
+function createRED(getQueueConfig) {
+  const registered = new Map();
+  return {
+    registered,
+    nodes: {
+      createNode(node) {
+        Object.setPrototypeOf(node, EventEmitter.prototype);
+        EventEmitter.call(node);
+        node.id = "run-1";
+        node.status = () => {};
+        node.error = () => {};
+        node.send = () => {};
+      },
+      getNode: () => getQueueConfig(),
+      registerType(type, constructor) {
+        registered.set(type, { constructor });
+      },
+    },
+  };
+}
+
+// Builds one "bull run" (manual mode, backed by a FakeWorker) and one
+// "bull job" node sharing the same acknowledgement registry that
+// registerBullMQNodes(RED) closes over -- exactly how a real flow wires them.
+function setupCancelHarness() {
+  const worker = new FakeWorker();
+  let processor;
+  const queueConfig = {
+    config: { queueName: "cancelcasts" },
+    register() {},
+    createWorker(p) {
+      processor = p;
+      return worker;
+    },
+    getQueue: () => ({}),
+    async releaseResource() {},
+    deregister(node, done) {
+      done();
+    },
+  };
+  const RED = createRED(() => queueConfig);
+  registerBullMQNodes(RED);
+
+  const runNode = {};
+  RED.registered.get("bull run").constructor.call(runNode, {
+    queue: "queue",
+    completionMode: "manual",
+    ackTimeout: 0, // disable the ack timeout; tests settle explicitly
+  });
+  const sent = [];
+  runNode.send = (msg) => sent.push(msg);
+
+  const jobNode = {};
+  RED.registered.get("bull job").constructor.call(jobNode, {});
+
+  // Simulates BullMQ invoking the processor for a manual-mode job, tracking
+  // its AbortController on the FakeWorker the same way bullmq's LockManager
+  // would. Returns the ackId the run node sent downstream.
+  function runJob(jobId) {
+    const controller = new AbortController();
+    worker.track(jobId, controller);
+    const resultPromise = processor({ id: jobId }, "token", controller.signal);
+    return { ackId: sent.at(-1).bull.ackId, controller, resultPromise };
+  }
+
+  function dispatch(msg) {
+    const outputs = [];
+    let doneErr;
+    let doneCalled = false;
+    jobNode.emit(
+      "input",
+      msg,
+      (m) => outputs.push(m),
+      (err) => {
+        doneCalled = true;
+        doneErr = err;
+      },
+    );
+    return { outputs, doneErr, doneCalled };
+  }
+
+  return { processor, worker, runJob, dispatch };
+}
+
+test("the bull run processor declares arity 3 so BullMQ tracks a cancellable AbortController", () => {
+  const { processor } = setupCancelHarness();
+  assert.equal(
+    processor.length,
+    3,
+    "processor must declare (job, token, signal) or BullMQ never creates the AbortController",
+  );
+});
+
+test("cancelJob reaches the owning worker with the job id and the resolved reason", async () => {
+  const harness = setupCancelHarness();
+  const { ackId, resultPromise } = harness.runJob("job-1");
+
+  const result = harness.dispatch({ cmd: "cancelJob", bull: { ackId } });
+
+  assert.deepEqual(harness.worker.cancelJobCalls, [
+    { jobId: "job-1", reason: "BullMQ job cancelled" },
+  ]);
+  assert.equal(result.outputs[0].payload, true);
+  assert.equal(result.doneCalled, true);
+  assert.equal(result.doneErr, undefined);
+  await assert.rejects(resultPromise, /BullMQ job cancelled/);
+});
+
+test("cancelJob uses msg.reason when the caller provides one", async () => {
+  const harness = setupCancelHarness();
+  const { ackId, resultPromise } = harness.runJob("job-1");
+
+  harness.dispatch({
+    cmd: "cancelJob",
+    bull: { ackId },
+    reason: "operator abort",
+  });
+
+  assert.equal(harness.worker.cancelJobCalls[0].reason, "operator abort");
+  await assert.rejects(resultPromise, /operator abort/);
+});
+
+test("cancelJob treats a false result from BullMQ as an error", async () => {
+  const harness = setupCancelHarness();
+  const { ackId, resultPromise } = harness.runJob("job-1");
+  // No cancellable processor found for this job id.
+  harness.worker.tracked.delete("job-1");
+
+  const result = harness.dispatch({ cmd: "cancelJob", bull: { ackId } });
+
+  assert.equal(result.doneCalled, true);
+  assert.match(
+    String(result.doneErr && result.doneErr.message),
+    /no cancellable processor/,
+  );
+
+  // Settle the survivor so the test leaves no dangling waiter.
+  harness.dispatch({ cmd: "complete", bull: { ackId }, payload: "done" });
+  assert.equal(await resultPromise, "done");
+});
+
+test("cancelAllJobs aborts every active acknowledgement for that run node", async () => {
+  const harness = setupCancelHarness();
+  const first = harness.runJob("job-1");
+  const second = harness.runJob("job-2");
+
+  const result = harness.dispatch({
+    cmd: "cancelAllJobs",
+    bull: { ackId: first.ackId },
+  });
+
+  assert.equal(result.outputs[0].payload, true);
+  assert.deepEqual(harness.worker.cancelAllJobsCalls, ["BullMQ job cancelled"]);
+  await assert.rejects(first.resultPromise, /BullMQ job cancelled/);
+  await assert.rejects(second.resultPromise, /BullMQ job cancelled/);
+
+  // Both acknowledgements are gone from the registry now.
+  const stale = harness.dispatch({
+    cmd: "complete",
+    bull: { ackId: second.ackId },
+  });
+  assert.match(
+    String(stale.doneErr && stale.doneErr.message),
+    /Missing, stale/,
+  );
+});
+
+test("a cancellation and a later completion attempt on the same ack settle exactly once", async () => {
+  const harness = setupCancelHarness();
+  const { ackId, resultPromise } = harness.runJob("job-1");
+
+  const cancelResult = harness.dispatch({ cmd: "cancelJob", bull: { ackId } });
+  assert.equal(cancelResult.outputs[0].payload, true);
+  await assert.rejects(resultPromise, /BullMQ job cancelled/);
+
+  // A "complete" action racing in after cancellation already settled the
+  // acknowledgement must not resurrect or re-settle it.
+  const completeResult = harness.dispatch({
+    cmd: "complete",
+    bull: { ackId },
+    payload: "too-late",
+  });
+  assert.match(
+    String(completeResult.doneErr && completeResult.doneErr.message),
+    /Missing, stale/,
+  );
+});
+
+test("a stale/settled ackId cannot be cancelled", async () => {
+  const harness = setupCancelHarness();
+  const { ackId, resultPromise } = harness.runJob("job-1");
+
+  harness.dispatch({ cmd: "complete", bull: { ackId }, payload: "done" });
+  assert.equal(await resultPromise, "done");
+
+  const cancelResult = harness.dispatch({ cmd: "cancelJob", bull: { ackId } });
+  assert.match(
+    String(cancelResult.doneErr && cancelResult.doneErr.message),
+    /Missing, stale/,
+  );
+  assert.equal(harness.worker.cancelJobCalls.length, 0);
 });

@@ -37,6 +37,7 @@ const DEFAULT_EVENTS = [
   "progress",
   "removed",
   "resumed",
+  "retries-exhausted",
   "stalled",
   "waiting",
   "waiting-children",
@@ -457,7 +458,10 @@ module.exports = function registerBullMQNodes(RED) {
       };
     }
 
-    const processor = async (job) => {
+    // Arity 3 tells BullMQ to create and track a per-job AbortController
+    // (worker.js: processorAcceptsSignal = processor.length >= 3), which is
+    // what makes cancelJob/cancelAllJobs able to reach this job at all.
+    const processor = async (job, _token, signal) => {
       if (node.completionMode === "manual") {
         const timeoutMs = parseAckTimeoutMs(n.ackTimeout);
         const acknowledgement = acknowledgements.create(
@@ -466,6 +470,8 @@ module.exports = function registerBullMQNodes(RED) {
             queue: node.bullQueue.getQueue(),
             queueName: node.bullQueue.config.queueName,
             runNodeId: node.id,
+            worker: node.worker,
+            signal,
           },
           timeoutMs
         );
@@ -574,6 +580,27 @@ module.exports = function registerBullMQNodes(RED) {
             context.fail(Worker.RateLimitError());
             nodeDone(node, done);
             return;
+          case "cancelJob": {
+            const reason = msg.reason || "BullMQ job cancelled";
+            const cancelled = context.worker.cancelJob(context.job.id, reason);
+            if (!cancelled) {
+              throw new Error(
+                `BullMQ found no cancellable processor for job ${context.job.id}`
+              );
+            }
+            msg.payload = cancelled;
+            nodeSend(node, send, msg);
+            nodeDone(node, done);
+            return;
+          }
+          case "cancelAllJobs": {
+            const reason = msg.reason || "BullMQ job cancelled";
+            context.worker.cancelAllJobs(reason);
+            msg.payload = true;
+            nodeSend(node, send, msg);
+            nodeDone(node, done);
+            return;
+          }
           default:
             throw new Error(`Unsupported bull job action: ${action}`);
         }

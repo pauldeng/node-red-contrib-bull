@@ -446,6 +446,8 @@ test("maps queue administration, limits, logs, and metrics commands", async () =
     ],
     ["pause", {}, [], undefined, true],
     ["resume", {}, [], undefined, true],
+    ["isPaused", {}, [], true, true],
+    ["isMaxed", {}, [], false, false],
     ["drain", { delayed: true }, [true], undefined, true],
     [
       "clean",
@@ -483,6 +485,7 @@ test("maps queue administration, limits, logs, and metrics commands", async () =
       { logs: ["row"] },
       { logs: ["row"] },
     ],
+    ["getVersion", {}, [], "5.80.9", "5.80.9"],
     ["exportPrometheusMetrics", {}, [], "metric 1", "metric 1"],
   ];
 
