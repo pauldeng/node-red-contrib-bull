@@ -13,7 +13,7 @@ Hard constraints. Each one exists because breaking it breaks a released contract
 
 - BullMQ is pinned to an exact version. Do not widen the range; `package.json` holds the value and `test/package-contract.test.js` enforces it.
 - Do not reintroduce `bull` or `sprintf-js`.
-- The published runtime floor is Node.js 18 with Node-RED 4.1.x. Local development needs Node.js 22.9+ because the Node-RED 5 dev dependency does.
+- The runtime floor is Node.js 22.9 with Node-RED 5.x, for the published package and for local development alike.
 
 ## Secrets
 
