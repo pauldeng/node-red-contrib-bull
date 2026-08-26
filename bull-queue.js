@@ -1,6 +1,7 @@
 "use strict";
 
 const {
+  createPostgresBackend,
   DelayedError,
   FlowProducer,
   Queue,
@@ -59,10 +60,13 @@ const CLOSE_GRACE_MS = 1000;
 // the sum.
 const GRACEFUL_CLOSE_MS = 10000;
 
-// Shared producer connection listener budget: every bullmq cmd node adds
-// ready/error/close listeners to it, and BullMQ adds its own on top.
-const PRODUCER_MAX_LISTENERS = 1000;
-
+// KNOWN GAP, owned by the PostgreSQL plan's Phase 5: this reads an ioredis
+// connection's live status, and the postgres path tracks no connection at all
+// (BullMQ owns its pool), so every postgres resource takes the fast 1s budget
+// even when the database is perfectly reachable -- a worker mid-job would be
+// cut off rather than allowed to drain. The backend-neutral signal the fix
+// needs already exists as the config node's backendStatus; Phase 5 wires it in
+// after measuring what an unreachable PostgreSQL actually does.
 function closeBudgetFor(connection) {
   return connection && connection.status === "ready"
     ? GRACEFUL_CLOSE_MS
@@ -405,16 +409,16 @@ module.exports = function registerBullMQNodes(RED) {
 
     node.getQueue = function getQueue() {
       if (!node.queue) {
-        node.producerConnection = node.createConnection("producer");
-        // A generous finite limit, deliberately not 0. Node treats 0 as
-        // unlimited, but BullMQ's increaseMaxListeners() does
-        // getMaxListeners() + n, so 0 becomes a hard cap of 3 and every
-        // bullmq cmd node sharing this connection then trips a
-        // MaxListenersExceededWarning.
-        node.producerConnection.setMaxListeners(PRODUCER_MAX_LISTENERS);
+        // BullMQ owns every PostgreSQL connection (a pool plus a dedicated
+        // LISTEN client per backend); this package builds none of its own on
+        // that path, so createConnection is skipped entirely.
+        const isPostgres = node.config.backend === "postgres";
+        if (!isPostgres) {
+          node.producerConnection = node.createConnection("producer");
+        }
         const queueOptions = buildBullMQOptions(
           node.config,
-          node.producerConnection,
+          isPostgres ? node.config.postgres : node.producerConnection,
           node.getTelemetry(),
           "producer",
         );
@@ -424,15 +428,98 @@ module.exports = function registerBullMQNodes(RED) {
         if (node.config.defaultJobOptions) {
           queueOptions.defaultJobOptions = node.config.defaultJobOptions;
         }
-        node.queue = new Queue(node.config.queueName, queueOptions);
-        node.resources.set(node.queue, node.producerConnection);
+        node.queue = isPostgres
+          ? new Queue(node.config.queueName, queueOptions, createPostgresBackend)
+          : new Queue(node.config.queueName, queueOptions);
+        node.watchBackend(node.queue.getBackend());
+        // No connection of our own on postgres -- the owner is tracked with no
+        // value so close/redeploy still walks it, but has nothing raw to close.
+        node.resources.set(
+          node.queue,
+          isPostgres ? undefined : node.producerConnection,
+        );
         attachErrorListener(node.queue, node);
       }
       return node.queue;
     };
 
-    // The producer connection backs the shared queue used by bullmq cmd nodes;
-    // exposing it lets those nodes mirror the real connection state.
+    // Live reachability of the shared backend, owned here rather than read by
+    // each bullmq cmd node. waitUntilReady() cannot answer "is it reachable
+    // now": RedisQueueBackend awaits connection.client, which returns the
+    // promise built once in the constructor, and PostgresConnection memoizes
+    // readyPromise the same way. So a node deployed after an outage began would
+    // see that resolved promise and paint a false "connected". The backend's
+    // ready/error/close events are live, so they own the state after the first
+    // observation and every reader sees the current value.
+    node.backendStatus = "connecting";
+    node.backendReaders = new Set();
+
+    function publishBackendStatus(status) {
+      node.backendStatus = status;
+      for (const read of node.backendReaders) {
+        read(status);
+      }
+    }
+
+    node.watchBackend = function watchBackend(backend) {
+      backend.on("ready", () => publishBackendStatus("connected"));
+      backend.on("error", () => publishBackendStatus("disconnected"));
+      backend.on("close", () => publishBackendStatus("disconnected"));
+      // Seed the first observation once, for the whole config node. An async
+      // IIFE rather than a promise chain (forbidden in this file) so it never
+      // blocks deploy, and it must not overwrite a live event that already
+      // told us more than this memoized promise can.
+      (async () => {
+        try {
+          await backend.waitUntilReady();
+          if (node.backendStatus === "connecting") {
+            publishBackendStatus("connected");
+          }
+        } catch (err) {
+          // Do NOT assume an event already covered this. PostgresConnection's
+          // bootstrap() rejects on connect, auth, migration, or schema failure
+          // and emits nothing (its emitError only forwards idle-pool and LISTEN
+          // errors, and only when a listener is already attached), and Queue's
+          // constructor swallows the same rejection. Without this the node
+          // would sit on "connecting" forever with nothing reported. The
+          // sibling bullmq events and bullmq flow nodes handle their own
+          // waitUntilReady() rejection the same way.
+          // Phase 4 will add the reason reporting (one node.error per config
+          // node, keyed by failure category) on top of this status change.
+          if (node.backendStatus === "connecting") {
+            publishBackendStatus("disconnected");
+            // Say why, not just that. On PostgreSQL this is where an
+            // unreachable database, a bad password, a missing pg module, or a
+            // schema/migration failure surfaces -- and nothing else reports it,
+            // because bootstrap() rejects without emitting. Phase 4 replaces
+            // this with per-category messages behind a latch keyed by failure
+            // type; the latch matters once four backends can each fail the
+            // same way, which is why this stays a single report for now.
+            node.error(
+              `BullMQ backend is unavailable: ${err && err.message ? err.message : err}`,
+            );
+          }
+        }
+      })();
+    };
+
+    // Readers get the current status immediately, which is what makes a
+    // late-deployed node correct: the shared state is live, unlike the
+    // already-fired "ready" event it would otherwise have missed.
+    node.readBackendStatus = function readBackendStatus(read) {
+      node.backendReaders.add(read);
+      read(node.backendStatus);
+      return function stopReading() {
+        node.backendReaders.delete(read);
+      };
+    };
+
+    // The producer connection backs the shared queue. No production code reads
+    // it now that status is owned above; the Redis restart-recovery test does,
+    // because simulating a restart needs the raw ioredis client. On postgres
+    // node.producerConnection is never assigned (BullMQ owns that pool), so
+    // this returns null -- an honest "no raw connection", not an error, since
+    // nothing on the postgres path needs one today.
     node.getProducerConnection = function getProducerConnection() {
       node.getQueue();
       return node.producerConnection;
@@ -442,40 +529,67 @@ module.exports = function registerBullMQNodes(RED) {
     // error listener, so worker/events/flow errors surface on the visible
     // runtime node rather than the hidden config node.
     node.createWorker = function createWorker(processor, options, owner = node) {
-      const connection = node.createConnection("worker", owner);
-      const worker = new Worker(node.config.queueName, processor, {
+      const isPostgres = node.config.backend === "postgres";
+      const connection = isPostgres
+        ? undefined
+        : node.createConnection("worker", owner);
+      const workerOptions = {
         ...buildBullMQOptions(
           node.config,
-          connection,
+          isPostgres ? node.config.postgres : connection,
           node.getTelemetry(),
           "worker",
         ),
         ...options,
-      });
+      };
+      const worker = isPostgres
+        ? new Worker(
+            node.config.queueName,
+            processor,
+            workerOptions,
+            createPostgresBackend,
+          )
+        : new Worker(node.config.queueName, processor, workerOptions);
       node.resources.set(worker, connection);
       return worker;
     };
 
     node.createQueueEvents = function createQueueEvents(owner = node) {
-      const connection = node.createConnection("events", owner);
-      const queueEvents = new QueueEvents(
-        node.config.queueName,
-        buildBullMQOptions(node.config, connection, undefined, "events")
+      const isPostgres = node.config.backend === "postgres";
+      const connection = isPostgres
+        ? undefined
+        : node.createConnection("events", owner);
+      const queueEventsOptions = buildBullMQOptions(
+        node.config,
+        isPostgres ? node.config.postgres : connection,
+        undefined,
+        "events"
       );
+      const queueEvents = isPostgres
+        ? new QueueEvents(
+            node.config.queueName,
+            queueEventsOptions,
+            createPostgresBackend,
+          )
+        : new QueueEvents(node.config.queueName, queueEventsOptions);
       node.resources.set(queueEvents, connection);
       return queueEvents;
     };
 
     node.createFlowProducer = function createFlowProducer(owner = node) {
-      const connection = node.createConnection("producer", owner);
-      const flowProducer = new FlowProducer(
-        buildBullMQOptions(
-          node.config,
-          connection,
-          node.getTelemetry(),
-          "producer",
-        )
+      const isPostgres = node.config.backend === "postgres";
+      const connection = isPostgres
+        ? undefined
+        : node.createConnection("producer", owner);
+      const flowProducerOptions = buildBullMQOptions(
+        node.config,
+        isPostgres ? node.config.postgres : connection,
+        node.getTelemetry(),
+        "producer"
       );
+      const flowProducer = isPostgres
+        ? new FlowProducer(flowProducerOptions, createPostgresBackend)
+        : new FlowProducer(flowProducerOptions);
       node.resources.set(flowProducer, connection);
       return flowProducer;
     };
@@ -521,23 +635,28 @@ module.exports = function registerBullMQNodes(RED) {
 
     node.bullConn.register(node);
 
-    // Watch the shared producer connection so the visible status reflects
-    // whether Redis is actually reachable instead of a static "configured".
-    const connection = node.bullConn.getProducerConnection();
-    const connectionListeners = {
-      ready: () => setConnected(node),
-      error: () => setDisconnected(node),
-      close: () => setDisconnected(node),
+    // Mirror the config node's live view of the shared backend. Reading the
+    // shared state rather than subscribing to the backend directly keeps the
+    // listener count on the backend constant no matter how many bullmq cmd
+    // nodes a flow has, and gives a node deployed mid-outage the current
+    // status instead of a stale one.
+    const applyBackendStatus = (status) => {
+      if (status === "connected") {
+        setConnected(node);
+      } else if (status === "disconnected") {
+        setDisconnected(node);
+      } else {
+        setConnecting(node);
+      }
     };
-    for (const [event, listener] of Object.entries(connectionListeners)) {
-      connection.on(event, listener);
-    }
-    if (connection.status === "ready") {
-      setConnected(node);
-    } else {
-      setConnecting(node);
-    }
-
+    // Create the shared queue up front, as this node has always done, so the
+    // status reflects real reachability instead of a static "configured" the
+    // moment the flow deploys. This is the call that builds the queue, its
+    // connection, and (once PostgreSQL is wired) its pool; reading the status
+    // afterwards only subscribes.
+    node.bullConn.getQueue();
+    const stopReadingBackend =
+      node.bullConn.readBackendStatus(applyBackendStatus);
     node.on("input", async function onInput(msg, send, done) {
       try {
         const result = await dispatchCommand(node.bullConn.getQueue(), msg);
@@ -550,9 +669,7 @@ module.exports = function registerBullMQNodes(RED) {
     });
 
     node.on("close", function onClose(removed, done) {
-      for (const [event, listener] of Object.entries(connectionListeners)) {
-        connection.removeListener(event, listener);
-      }
+      stopReadingBackend();
       node.bullConn.deregister(node, done);
     });
   }

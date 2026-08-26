@@ -27,7 +27,7 @@ The runtime does Node-RED lifecycle work only: creating nodes, wiring input hand
 
 Each BullMQ owner (`Queue`, `Worker`, `QueueEvents`, or `FlowProducer`) is tracked with its owned ioredis connection. A runtime node releases its pair on redeploy; config-node shutdown closes independent pairs concurrently. See Shutdown below for how each owner/connection pair actually closes.
 
-Connection and resource errors are reported on the consuming runtime node's status (`bullmq run`, `bullmq events`, `bullmq flow`). The config node owns the shared queue and its producer connection. Each `bullmq cmd` mirrors that shared producer connection on its visible status, while Queue errors report on the config node.
+Connection and resource errors are reported on the consuming runtime node's status (`bullmq run`, `bullmq events`, `bullmq flow`). The config node owns the shared queue and its producer connection. Each `bullmq cmd` mirrors that shared queue's backend (`Queue.getBackend()`, BullMQ's `IQueueBackend`) on its visible status instead of reading the producer connection directly, while Queue errors report on the config node.
 
 Secrets are read only from Node-RED credentials.
 
