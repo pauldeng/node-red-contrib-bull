@@ -29,10 +29,14 @@
     "ioredis": "5.11.1"
   },
   "peerDependencies": {
-    "bullmq-otel": ">=2.0.0"
+    "bullmq-otel": ">=2.0.0",
+    "pg": ">=8.0.0"
   },
   "peerDependenciesMeta": {
     "bullmq-otel": {
+      "optional": true
+    },
+    "pg": {
       "optional": true
     }
   },
@@ -74,6 +78,7 @@
     "bullmq-otel": "2.0.1",
     "node-red": "5.0.4",
     "node-red-node-test-helper": "^0.3.6",
+    "pg": "8.23.0",
     "prettier": "3.9.6"
   }
 }
