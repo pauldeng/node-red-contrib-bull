@@ -1,10 +1,12 @@
 "use strict";
 
 const {
+  DelayedError,
   FlowProducer,
   Queue,
   QueueEvents,
   UnrecoverableError,
+  WaitingError,
   Worker,
 } = require("bullmq");
 const IORedis = require("ioredis");
@@ -195,6 +197,27 @@ function nodeDone(node, done, err, msg) {
   } else if (err) {
     node.error(err, msg);
   }
+}
+
+// FlowProducer.addBulk(flows) accepts no options argument, so the queuesOptions
+// route withFlowJobDefaults() uses for add() is unavailable here. Stamp the
+// retention onto each job's own opts instead; anything the caller set wins.
+function withBulkFlowJobDefaults(flow, defaultJobOptions) {
+  if (!defaultJobOptions || !flow || typeof flow !== "object") {
+    return flow;
+  }
+
+  const children = Array.isArray(flow.children)
+    ? flow.children.map((child) =>
+        withBulkFlowJobDefaults(child, defaultJobOptions),
+      )
+    : flow.children;
+
+  return {
+    ...flow,
+    opts: { ...defaultJobOptions, ...flow.opts },
+    ...(children === undefined ? {} : { children }),
+  };
 }
 
 function withFlowJobDefaults(flow, flowOptions, defaultJobOptions) {
@@ -551,6 +574,11 @@ module.exports = function registerBullMQNodes(RED) {
 
     const workerOptions = {
       concurrency: parsePositiveInteger(n.concurrency, 1, "Concurrency"),
+      maxStartedAttempts: parsePositiveInteger(
+        n.maxStartedAttempts,
+        100,
+        "Max Started Attempts"
+      ),
     };
     const hasLimiterMax = isPresent(n.limiterMax);
     const hasLimiterDuration = isPresent(n.limiterDuration);
@@ -571,7 +599,10 @@ module.exports = function registerBullMQNodes(RED) {
     // Arity 3 tells BullMQ to create and track a per-job AbortController
     // (worker.js: processorAcceptsSignal = processor.length >= 3), which is
     // what makes cancelJob/cancelAllJobs able to reach this job at all.
-    const processor = async (job, _token, signal) => {
+    // The token is the job's lock: bullmq job needs it for moveToWait and
+    // moveToDelayed, and it stays in the acknowledgement registry -- never in
+    // a message.
+    const processor = async (job, token, signal) => {
       if (node.completionMode === "manual") {
         const timeoutMs = parseAckTimeoutMs(n.ackTimeout);
         const acknowledgement = acknowledgements.create(
@@ -582,6 +613,7 @@ module.exports = function registerBullMQNodes(RED) {
             runNodeId: node.id,
             worker: node.worker,
             signal,
+            token,
           },
           timeoutMs
         );
@@ -688,6 +720,40 @@ module.exports = function registerBullMQNodes(RED) {
           case "rateLimit":
             await context.queue.rateLimit(msg.duration);
             context.fail(Worker.RateLimitError());
+            nodeDone(node, done);
+            return;
+          // Step/retry transitions. Each hands the job's lock token back to
+          // BullMQ and then settles the acknowledgement with the error class
+          // the worker special-cases, so the job is NOT moved to failed
+          // (worker.js checks DelayedError and WaitingError).
+          case "moveToWait": {
+            await context.job.moveToWait(context.token);
+            context.fail(new WaitingError());
+            msg.payload = true;
+            nodeSend(node, send, msg);
+            nodeDone(node, done);
+            return;
+          }
+          case "moveToDelayed": {
+            const delay = Number(msg.delay);
+            if (!Number.isFinite(delay) || delay < 0) {
+              throw new Error(
+                "moveToDelayed requires msg.delay in milliseconds"
+              );
+            }
+            await context.job.moveToDelayed(Date.now() + delay, context.token);
+            context.fail(new DelayedError());
+            msg.payload = true;
+            nodeSend(node, send, msg);
+            nodeDone(node, done);
+            return;
+          }
+          case "updateData":
+            await context.job.updateData(
+              Object.hasOwn(msg, "jobData") ? msg.jobData : msg.payload
+            );
+            msg.payload = serializeJob(context.job);
+            nodeSend(node, send, msg);
             nodeDone(node, done);
             return;
           case "cancelJob": {
@@ -802,18 +868,29 @@ module.exports = function registerBullMQNodes(RED) {
     node.on("input", async function onInput(msg, send, done) {
       try {
         if (!msg.payload || typeof msg.payload !== "object") {
-          throw new Error("bullmq flow requires msg.payload to contain a flow tree");
+          throw new Error(
+            "bullmq flow requires msg.payload to contain a flow tree, or an array of flow trees"
+          );
         }
-        msg.payload = serializeFlowJob(
-          await node.flowProducer.add(
-            msg.payload,
-            withFlowJobDefaults(
+        const retention = node.bullConn.config.defaultJobOptions;
+        if (Array.isArray(msg.payload)) {
+          // addBulk creates every tree or none of them, which is the whole
+          // reason to use it instead of one add() per tree.
+          if (msg.payload.length === 0) {
+            throw new Error("bullmq flow requires at least one flow tree");
+          }
+          const trees = await node.flowProducer.addBulk(
+            msg.payload.map((flow) => withBulkFlowJobDefaults(flow, retention))
+          );
+          msg.payload = trees.map(serializeFlowJob);
+        } else {
+          msg.payload = serializeFlowJob(
+            await node.flowProducer.add(
               msg.payload,
-              msg.flowopts,
-              node.bullConn.config.defaultJobOptions,
-            ),
-          )
-        );
+              withFlowJobDefaults(msg.payload, msg.flowopts, retention)
+            )
+          );
+        }
         nodeSend(node, send, msg);
         nodeDone(node, done);
       } catch (err) {

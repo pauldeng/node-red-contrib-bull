@@ -31,7 +31,7 @@ Connection and resource errors are reported on the consuming runtime node's stat
 
 Secrets are read only from Node-RED credentials.
 
-Queue retention defaults are attached directly to `Queue`. `bullmq flow` builds BullMQ `queuesOptions` for every queue name in its tree so the same defaults also reach `FlowProducer`, while preserving per-queue and per-job overrides.
+Queue retention defaults are attached directly to `Queue`. For a single tree, `bullmq flow` builds BullMQ `queuesOptions` for every queue name so the same defaults also reach `FlowProducer`. For a bulk array, whose BullMQ API accepts no options argument, it stamps the defaults onto each job's `opts`. Both paths preserve job-level overrides.
 
 ## Shutdown
 
@@ -63,6 +63,7 @@ A raw ioredis connection (not a BullMQ owner) skips straight to a force-disconne
 
 - Immediate mode sends a Node-RED message and completes the job immediately.
 - Manual mode creates an opaque `msg.bull.ackId` and waits for a downstream `bullmq job` node.
+- Every worker defaults `maxStartedAttempts` to 100 so repeated non-failing transitions cannot reactivate one job forever.
 
 The in-process acknowledgement registry (`lib/acknowledgements.js`) stores live jobs and promise settlement functions. Each entry self-removes when it settles (complete, fail, timeout, or run-node close), so the registry does not accumulate finished jobs. Lock tokens are never sent in messages.
 
@@ -76,4 +77,4 @@ Both actions require the acknowledgement behind `msg.bull.ackId`, so they only r
 
 `bullmq events` wraps QueueEvents and emits event messages with `msg.topic`, `msg.payload`, and `msg.bull` metadata.
 
-`bullmq flow` wraps FlowProducer and serializes the returned parent/child tree.
+`bullmq flow` wraps FlowProducer and serializes the returned parent/child tree, or the array of trees returned by `addBulk`.

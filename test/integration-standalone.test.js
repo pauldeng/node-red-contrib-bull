@@ -1047,3 +1047,139 @@ test(
     }
   },
 );
+
+test(
+  "bullmq job resumes a delayed job at the step recorded by updateData",
+  { skip: !enabled },
+  async () => {
+    const redis = await startRedis();
+    const userDir = await startHelper();
+
+    try {
+      // No core function node here: node-red-node-test-helper only registers
+      // this package's nodes plus helper, so the step routing a real flow
+      // would do with a function node is driven from the test instead.
+      const flow = [
+        { id: "tab", type: "tab", label: "steps" },
+        queueConfig("queue", "stepcasts", redis),
+        {
+          id: "cmd",
+          type: "bullmq cmd",
+          z: "tab",
+          queue: "queue",
+          wires: [[]],
+        },
+        {
+          id: "run",
+          type: "bullmq run",
+          z: "tab",
+          name: "step worker",
+          queue: "queue",
+          completionMode: "manual",
+          ackTimeout: 300000,
+          concurrency: 1,
+          wires: [["activations"]],
+        },
+        { id: "activations", type: "helper", z: "tab", wires: [] },
+        {
+          id: "job",
+          type: "bullmq job",
+          z: "tab",
+          action: "complete",
+          wires: [[]],
+        },
+      ];
+
+      await helper.load(bullNodes, flow);
+      const cmd = helper.getNode("cmd");
+      const activations = helper.getNode("activations");
+      const job = helper.getNode("job");
+
+      const bothActivations = waitForInputMessages(activations, 2);
+      cmd.receive({
+        cmd: "add",
+        jobData: { step: "first" },
+        jobopts: { attempts: 1, removeOnComplete: false },
+      });
+
+      const [first] = await waitForInputMessages(activations, 1);
+      assert.equal(first.job.data.step, "first");
+
+      // Record the next step, then delay the job instead of failing it.
+      job.receive({ ...first, cmd: "updateData", jobData: { step: "second" } });
+      job.receive({ ...first, cmd: "moveToDelayed", delay: 50 });
+
+      const [, second] = await bothActivations;
+      // Only reachable if the lock token really moved the job to delayed
+      // rather than failing it, and updateData survived the transition.
+      assert.equal(second.job.data.step, "second");
+      assert.equal(
+        second.job.attemptsMade,
+        0,
+        "a step transition must not count as a retry",
+      );
+
+      job.receive({ ...second, cmd: "complete", payload: "done" });
+    } finally {
+      await stopHelper(userDir);
+      redis.stop();
+    }
+  },
+);
+
+test(
+  "bullmq flow addBulk creates trees across separate queues atomically",
+  { skip: !enabled },
+  async () => {
+    const redis = await startRedis();
+    const userDir = await startHelper();
+
+    try {
+      const flow = [
+        { id: "tab", type: "tab", label: "bulk" },
+        queueConfig("queue", "bulkcasts", redis),
+        {
+          id: "flow",
+          type: "bullmq flow",
+          z: "tab",
+          queue: "queue",
+          wires: [["flow-out"]],
+        },
+        { id: "flow-out", type: "helper", z: "tab", wires: [] },
+      ];
+
+      await helper.load(bullNodes, flow);
+      const flowNode = helper.getNode("flow");
+      const flowOut = helper.getNode("flow-out");
+
+      const added = waitForInput(flowOut);
+      flowNode.receive({
+        payload: [
+          { name: "one", queueName: "bulk-a", data: { n: 1 } },
+          { name: "two", queueName: "bulk-b", data: { n: 2 } },
+        ],
+      });
+
+      const msg = await added;
+      assert.equal(msg.payload.length, 2);
+
+      // Both queues really got their job, which is what addBulk buys over two
+      // separate add() calls.
+      const client = new Redis({
+        host: "127.0.0.1",
+        port: redis.port,
+        maxRetriesPerRequest: null,
+      });
+      client.on("error", () => {});
+      try {
+        assert.equal(await client.llen("bull:bulk-a:wait"), 1);
+        assert.equal(await client.llen("bull:bulk-b:wait"), 1);
+      } finally {
+        client.disconnect();
+      }
+    } finally {
+      await stopHelper(userDir);
+      redis.stop();
+    }
+  },
+);

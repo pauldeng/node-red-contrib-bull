@@ -327,10 +327,14 @@ function setupCancelHarness() {
   // Simulates BullMQ invoking the processor for a manual-mode job, tracking
   // its AbortController on the FakeWorker the same way bullmq's LockManager
   // would. Returns the ackId the run node sent downstream.
-  function runJob(jobId) {
+  function runJob(jobId, jobOverrides = {}) {
     const controller = new AbortController();
     worker.track(jobId, controller);
-    const resultPromise = processor({ id: jobId }, "token", controller.signal);
+    const resultPromise = processor(
+      { id: jobId, ...jobOverrides },
+      "lock-token",
+      controller.signal,
+    );
     return { ackId: sent.at(-1).bull.ackId, controller, resultPromise };
   }
 
@@ -470,4 +474,118 @@ test("a stale/settled ackId cannot be cancelled", async () => {
     /Missing, stale/,
   );
   assert.equal(harness.worker.cancelJobCalls.length, 0);
+});
+
+// The step/retry transitions all need the job's lock token, which BullMQ hands
+// to the processor and this package keeps in the acknowledgement registry.
+test("moveToWait hands the lock token back and settles with WaitingError", async () => {
+  const harness = setupCancelHarness();
+  const calls = [];
+  const { ackId, resultPromise } = harness.runJob("job-1", {
+    async moveToWait(token) {
+      calls.push({ method: "moveToWait", token });
+      return 1;
+    },
+  });
+
+  const result = harness.dispatch({ cmd: "moveToWait", bull: { ackId } });
+  await assert.rejects(resultPromise, (err) => err.name === "WaitingError");
+  await sleep(10);
+
+  assert.deepEqual(calls, [{ method: "moveToWait", token: "lock-token" }]);
+  assert.equal(result.outputs[0].payload, true);
+});
+
+test("moveToDelayed delays from now and settles with DelayedError", async () => {
+  const harness = setupCancelHarness();
+  const calls = [];
+  const before = Date.now();
+  const { ackId, resultPromise } = harness.runJob("job-1", {
+    async moveToDelayed(timestamp, token) {
+      calls.push({ timestamp, token });
+    },
+  });
+
+  harness.dispatch({ cmd: "moveToDelayed", delay: 5000, bull: { ackId } });
+  await assert.rejects(resultPromise, (err) => err.name === "DelayedError");
+  await sleep(10);
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].token, "lock-token");
+  assert.ok(
+    calls[0].timestamp >= before + 5000,
+    `expected an absolute timestamp at least 5s out, got ${calls[0].timestamp - before}ms`,
+  );
+});
+
+test("moveToDelayed requires a delay", async () => {
+  const harness = setupCancelHarness();
+  const { ackId } = harness.runJob("job-1", { async moveToDelayed() {} });
+
+  const result = harness.dispatch({ cmd: "moveToDelayed", bull: { ackId } });
+  await sleep(10);
+  assert.match(String(result.doneErr), /msg\.delay/);
+});
+
+test("moveToWaitingChildren is not a supported Node-RED action", async () => {
+  const harness = setupCancelHarness();
+  const job = harness.runJob("job-1");
+  const result = harness.dispatch({
+    cmd: "moveToWaitingChildren",
+    bull: { ackId: job.ackId },
+  });
+  await sleep(10);
+  assert.match(String(result.doneErr), /Unsupported bullmq job action/);
+
+  harness.dispatch({ cmd: "complete", bull: { ackId: job.ackId } });
+  await job.resultPromise;
+});
+
+test("updateData persists step state without settling the acknowledgement", async () => {
+  const harness = setupCancelHarness();
+  const stored = [];
+  const { ackId, resultPromise } = harness.runJob("job-1", {
+    async updateData(data) {
+      stored.push(data);
+    },
+  });
+
+  harness.dispatch({
+    cmd: "updateData",
+    jobData: { step: "second" },
+    bull: { ackId },
+  });
+  await sleep(10);
+  assert.deepEqual(stored, [{ step: "second" }]);
+
+  // Still the flow's to settle.
+  harness.dispatch({ cmd: "complete", payload: "done", bull: { ackId } });
+  assert.equal(await resultPromise, "done");
+});
+
+test("the lock token never reaches a Node-RED message", async () => {
+  const harness = setupCancelHarness();
+  const { ackId, resultPromise } = harness.runJob("job-1", {
+    async moveToWait() {
+      return 1;
+    },
+    async updateData() {},
+  });
+
+  const update = harness.dispatch({
+    cmd: "updateData",
+    payload: { step: 1 },
+    bull: { ackId },
+  });
+  const wait = harness.dispatch({ cmd: "moveToWait", bull: { ackId } });
+  await assert.rejects(resultPromise, (err) => err.name === "WaitingError");
+  await sleep(10);
+
+  for (const msg of [...update.outputs, ...wait.outputs]) {
+    assert.doesNotMatch(
+      JSON.stringify(msg),
+      /lock-token/,
+      "a lock token must never be serialized into a message",
+    );
+  }
 });

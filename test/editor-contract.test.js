@@ -74,6 +74,7 @@ test("worker, job, events, and flow editors expose their stable config fields", 
     "completionMode",
     "ackTimeout",
     "concurrency",
+    "maxStartedAttempts",
     "limiterMax",
     "limiterDuration",
     "action",
@@ -143,6 +144,7 @@ test("help documents runtime node fields and message examples", () => {
       "Completion",
       "Ack Timeout",
       "Concurrency",
+      "Max Started Attempts",
       "Limiter Max",
       "Limiter Duration",
       "msg.payload",
@@ -162,6 +164,9 @@ test("help documents runtime node fields and message examples", () => {
       "getChildrenValues",
       "getFailedChildrenValues",
       "removeUnprocessedChildren",
+      "moveToWait",
+      "moveToDelayed",
+      "updateData",
       "msg.cmd",
       "Example",
     ],
@@ -200,6 +205,10 @@ test("help documents runtime node fields and message examples", () => {
       );
     }
   }
+});
+
+test("editor does not expose the unsuitable waiting-children transition", () => {
+  assert.doesNotMatch(html, /moveToWaitingChildren/);
 });
 
 test("help links BullMQ API references to official API docs", () => {
