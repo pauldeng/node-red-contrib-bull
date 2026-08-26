@@ -10,6 +10,7 @@ const {
   buildRedisDescriptor,
   createRedisConnection,
   normalizeQueueConfig,
+  normalizePostgresConfig,
   parseEndpointList,
 } = require("../lib/connections");
 
@@ -404,4 +405,184 @@ test("queue-level auto-removal normalizes into BullMQ defaultJobOptions", () => 
     () => normalizeQueueConfig({ name: "q", removeOnFail: "not-a-number" }, {}),
     /removeOnFail/,
   );
+});
+
+// ---------------------------------------------------------------------------
+// backend seam
+// ---------------------------------------------------------------------------
+
+test("absent or blank backend means redis, and the redis config shape is unchanged", () => {
+  const absent = normalizeQueueConfig({ name: "basecasts" });
+  assert.equal(Object.hasOwn(absent, "backend"), false);
+  assert.equal(absent.host, "localhost");
+
+  const blank = normalizeQueueConfig({ name: "basecasts", backend: "" });
+  assert.equal(Object.hasOwn(blank, "backend"), false);
+});
+
+test("rejects an unsupported backend value", () => {
+  assert.throws(
+    () => normalizeQueueConfig({ name: "q", backend: "mongodb" }),
+    /Unsupported backend: mongodb/,
+  );
+});
+
+test("postgres backend ignores Redis-only fields instead of throwing", () => {
+  // A flow switched from Redis to postgres keeps its hidden Redis rows in the
+  // saved JSON -- deployment, clusterNodes, sentinelMasterName, and prefix
+  // must not be validated or cause an error.
+  const config = normalizeQueueConfig({
+    name: "switched",
+    backend: "postgres",
+    deployment: "cluster",
+    clusterNodes: "not-even-a-valid-host-list::::",
+    sentinelMasterName: "",
+    prefix: "myprefix",
+    address: "pg.example.test",
+    database: "jobs",
+  });
+
+  assert.equal(config.backend, "postgres");
+  assert.equal(config.postgres.host, "pg.example.test");
+  assert.equal(config.postgres.database, "jobs");
+  assert.equal(Object.hasOwn(config, "prefix"), false);
+  assert.equal(Object.hasOwn(config, "deployment"), false);
+});
+
+test("postgres backend still rejects removed aliases and plaintext secrets", () => {
+  assert.throws(
+    () =>
+      normalizeQueueConfig({ name: "q", backend: "postgres", mode: "cluster" }),
+    /Unsupported config field: mode/,
+  );
+  assert.throws(
+    () =>
+      normalizeQueueConfig({
+        name: "q",
+        backend: "postgres",
+        password: "plaintext",
+      }),
+    /must be stored in Node-RED credentials/,
+  );
+});
+
+test("normalizePostgresConfig: every field default", () => {
+  const config = normalizePostgresConfig({ name: "q" }, {});
+
+  assert.equal(config.backend, "postgres");
+  assert.equal(config.queueName, "q");
+  assert.deepEqual(config.postgres, {
+    host: "localhost",
+    port: 5432,
+    database: undefined,
+    user: undefined,
+    password: undefined,
+    schema: undefined,
+    max: 2,
+    connectionTimeoutMillis: 10000,
+    migrate: true,
+  });
+  assert.equal(Object.hasOwn(config.postgres, "ssl"), false);
+});
+
+test("normalizePostgresConfig: every field set, including credentials", () => {
+  const config = normalizePostgresConfig(
+    {
+      name: "orders",
+      address: "pg.example.test",
+      port: "5433",
+      database: "orders",
+      username: "app",
+      schema: "myschema",
+      max: "5",
+      migrate: false,
+    },
+    { password: "pg-secret" },
+  );
+
+  assert.deepEqual(config.postgres, {
+    host: "pg.example.test",
+    port: 5433,
+    database: "orders",
+    user: "app",
+    password: "pg-secret",
+    schema: "myschema",
+    max: 5,
+    connectionTimeoutMillis: 10000,
+    migrate: false,
+  });
+});
+
+test("normalizePostgresConfig: pool max rejects 0 but blank means the default", () => {
+  assert.throws(
+    () => normalizePostgresConfig({ name: "q", max: "0" }, {}),
+    /pool max must be a positive whole number/i,
+  );
+  assert.throws(
+    () => normalizePostgresConfig({ name: "q", max: "-1" }, {}),
+    /pool max must be a positive whole number/i,
+  );
+  assert.equal(
+    normalizePostgresConfig({ name: "q", max: "" }, {}).postgres.max,
+    2,
+  );
+});
+
+test("normalizePostgresConfig: invalid port is reported as PostgreSQL, not Redis", () => {
+  assert.throws(
+    () => normalizePostgresConfig({ name: "q", port: "70000" }, {}),
+    /Invalid PostgreSQL port/,
+  );
+});
+
+test("normalizePostgresConfig: requires a queue name", () => {
+  assert.throws(
+    () => normalizePostgresConfig({}, {}),
+    /BullMQ queue name is required/,
+  );
+});
+
+test("normalizePostgresConfig: ssl is built from the shared TLS fields when tls is on, absent when off", () => {
+  const withTls = normalizePostgresConfig(
+    {
+      name: "q",
+      tls: true,
+      tlsRejectUnauthorized: false,
+      tlsServerName: "pg.example.test",
+    },
+    { tlsCa: "ca-pem", tlsCert: "cert-pem", tlsKey: "key-pem" },
+  );
+  assert.deepEqual(withTls.postgres.ssl, {
+    rejectUnauthorized: false,
+    servername: "pg.example.test",
+    ca: "ca-pem",
+    cert: "cert-pem",
+    key: "key-pem",
+  });
+
+  const withoutTls = normalizePostgresConfig({ name: "q", tls: false }, {});
+  assert.equal(Object.hasOwn(withoutTls.postgres, "ssl"), false);
+});
+
+test("buildBullMQOptions omits skipWaitingForReady for postgres, keeps it for redis producers", () => {
+  const postgresConfig = normalizeQueueConfig({
+    name: "q",
+    backend: "postgres",
+  });
+  const postgresOptions = buildBullMQOptions(
+    postgresConfig,
+    {},
+    undefined,
+    "producer",
+  );
+  assert.equal(Object.hasOwn(postgresOptions, "skipWaitingForReady"), false);
+
+  const redisConfig = normalizeQueueConfig({ name: "q" });
+  const redisOptions = buildBullMQOptions(
+    redisConfig,
+    {},
+    undefined,
+    "producer",
+  );
+  assert.equal(redisOptions.skipWaitingForReady, true);
 });

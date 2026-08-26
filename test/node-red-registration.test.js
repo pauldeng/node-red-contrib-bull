@@ -346,17 +346,34 @@ test("bullmq events reports QueueEvents errors on its own node status", async ()
   assert.equal(errors.length, 1);
 });
 
-function createCmdQueueConfig(connection) {
+// The config node owns live backend status; bullmq cmd only reads it. This
+// fake stands in for that ownership so the cmd tests cover the mapping and
+// the unsubscribe, while the ownership logic itself is tested directly
+// against a real config node further down.
+function createCmdQueueConfig(initialStatus = "connecting") {
+  const readers = new Set();
   return {
     config: { queueName: "cmdcasts" },
+    status: initialStatus,
     register(node) {
       node.status({ fill: "grey", shape: "ring", text: "configured" });
     },
     getQueue() {
-      return {};
+      return { getBackend: () => new EventEmitter() };
     },
-    getProducerConnection() {
-      return connection;
+    readBackendStatus(read) {
+      readers.add(read);
+      read(this.status);
+      return () => readers.delete(read);
+    },
+    publish(status) {
+      this.status = status;
+      for (const read of readers) {
+        read(status);
+      }
+    },
+    readerCount() {
+      return readers.size;
     },
     deregister(node, done) {
       done();
@@ -364,13 +381,12 @@ function createCmdQueueConfig(connection) {
   };
 }
 
-test("bullmq cmd reflects the shared producer connection state", () => {
+test("bullmq cmd mirrors the config node's live backend status", () => {
   const statuses = [];
-  const connection = new EventEmitter();
-  connection.status = "connecting";
+  const queueConfig = createCmdQueueConfig("connecting");
   const RED = createRED({
     getNode() {
-      return createCmdQueueConfig(connection);
+      return queueConfig;
     },
     status(status) {
       statuses.push(status);
@@ -378,14 +394,13 @@ test("bullmq cmd reflects the shared producer connection state", () => {
   });
 
   registerBullMQNodes(RED);
-  const CmdNode = RED.registered.get("bullmq cmd").constructor;
-  CmdNode.call({}, { queue: "queue" });
+  RED.registered.get("bullmq cmd").constructor.call({}, { queue: "queue" });
 
   assert.ok(
     !statuses.some(
       (status) => status.fill === "green" && status.text === "configured",
     ),
-    "must not show a green configured dot while Redis is not connected",
+    "must not show a green configured dot while the backend is not connected",
   );
   assert.deepEqual(statuses.at(-1), {
     fill: "yellow",
@@ -393,14 +408,14 @@ test("bullmq cmd reflects the shared producer connection state", () => {
     text: "connecting",
   });
 
-  connection.emit("ready");
+  queueConfig.publish("connected");
   assert.deepEqual(statuses.at(-1), {
     fill: "green",
     shape: "dot",
     text: "connected",
   });
 
-  connection.emit("close");
+  queueConfig.publish("disconnected");
   assert.deepEqual(statuses.at(-1), {
     fill: "red",
     shape: "ring",
@@ -408,22 +423,17 @@ test("bullmq cmd reflects the shared producer connection state", () => {
   });
 });
 
-test("bullmq cmd shows connected immediately when the connection is already ready", () => {
+test("bullmq cmd deployed against an already-connected backend shows connected at once", () => {
   const statuses = [];
-  const connection = new EventEmitter();
-  connection.status = "ready";
+  // The case a missed "ready" event would strand on yellow forever.
+  const queueConfig = createCmdQueueConfig("connected");
   const RED = createRED({
-    getNode() {
-      return createCmdQueueConfig(connection);
-    },
-    status(status) {
-      statuses.push(status);
-    },
+    getNode: () => queueConfig,
+    status: (status) => statuses.push(status),
   });
 
   registerBullMQNodes(RED);
-  const CmdNode = RED.registered.get("bullmq cmd").constructor;
-  CmdNode.call({}, { queue: "queue" });
+  RED.registered.get("bullmq cmd").constructor.call({}, { queue: "queue" });
 
   assert.deepEqual(statuses.at(-1), {
     fill: "green",
@@ -432,31 +442,46 @@ test("bullmq cmd shows connected immediately when the connection is already read
   });
 });
 
-test("bullmq cmd removes its connection listeners on close", async () => {
-  const connection = new EventEmitter();
-  connection.status = "connecting";
+test("bullmq cmd deployed during an outage shows disconnected, not a stale green", () => {
+  const statuses = [];
+  // waitUntilReady() would resolve instantly here (it is memoized from a
+  // successful connect), so reading the config node's live state is the only
+  // thing that keeps this from painting a false "connected".
+  const queueConfig = createCmdQueueConfig("disconnected");
   const RED = createRED({
-    getNode() {
-      return createCmdQueueConfig(connection);
-    },
+    getNode: () => queueConfig,
+    status: (status) => statuses.push(status),
   });
 
   registerBullMQNodes(RED);
-  const CmdNode = RED.registered.get("bullmq cmd").constructor;
-  const node = {};
-  CmdNode.call(node, { queue: "queue" });
+  RED.registered.get("bullmq cmd").constructor.call({}, { queue: "queue" });
 
-  assert.ok(
-    connection.listenerCount("ready") > 0,
-    "bullmq cmd must watch the shared connection",
+  assert.deepEqual(statuses.at(-1), {
+    fill: "red",
+    shape: "ring",
+    text: "disconnected",
+  });
+  assert.equal(
+    statuses.some((status) => status.text === "connected"),
+    false,
   );
+});
 
-  const handler = node.listeners("close")[0];
-  await promisify(handler).call(node, false);
+test("bullmq cmd stops reading the shared status on close", async () => {
+  const queueConfig = createCmdQueueConfig("connecting");
+  const RED = createRED({ getNode: () => queueConfig });
 
-  assert.equal(connection.listenerCount("ready"), 0);
-  assert.equal(connection.listenerCount("close"), 0);
-  assert.equal(connection.listenerCount("error"), 0);
+  registerBullMQNodes(RED);
+  const node = {};
+  RED.registered.get("bullmq cmd").constructor.call(node, { queue: "queue" });
+  assert.equal(queueConfig.readerCount(), 1);
+
+  await promisify(node.listeners("close")[0]).call(node, false);
+  assert.equal(
+    queueConfig.readerCount(),
+    0,
+    "a closed node must stop reading, or every redeploy leaks a reader",
+  );
 });
 
 test("bullmq events shows connecting before the connection is ready", async () => {
@@ -575,14 +600,24 @@ test("config node exposes the shared producer connection", async () => {
   try {
     assert.ok(connection, "producer connection must be created on demand");
     assert.equal(connection, node.producerConnection);
-    // Never 0: Node reads 0 as unlimited, but BullMQ's increaseMaxListeners
-    // computes getMaxListeners() + n, which turns 0 into a cap of 3.
-    assert.notEqual(connection.getMaxListeners(), 0);
-    assert.ok(
-      connection.getMaxListeners() >= 100,
-      `producer connection listener budget too small: ${connection.getMaxListeners()}`,
-    );
     assert.ok(node.queue, "the shared queue must be created with it");
+    // Backend listeners must not grow with the number of readers. That
+    // invariant is what replaced the old listener budget: with no per-node
+    // accumulation there is nothing to raise a ceiling for. BullMQ keeps its
+    // own error/close listeners here too, so compare counts rather than
+    // asserting an absolute number.
+    const backend = node.queue.getBackend();
+    const before = ["ready", "error", "close"].map((event) =>
+      backend.listenerCount(event),
+    );
+    node.readBackendStatus(() => {});
+    node.readBackendStatus(() => {});
+    node.readBackendStatus(() => {});
+    assert.deepEqual(
+      ["ready", "error", "close"].map((event) => backend.listenerCount(event)),
+      before,
+      "readers must not each attach to the backend",
+    );
     assert.equal(node.getProducerConnection(), connection);
   } finally {
     try {
@@ -782,4 +817,120 @@ test("bullmq flow rejects an empty array of trees", async () => {
     );
   });
   assert.match(String(err), /at least one flow tree/);
+});
+
+test("a closed bullmq cmd is never touched by a later status change", async () => {
+  const statuses = [];
+  const queueConfig = createCmdQueueConfig("connecting");
+  const RED = createRED({
+    getNode: () => queueConfig,
+    status: (status) => statuses.push(status),
+  });
+
+  registerBullMQNodes(RED);
+  const node = {};
+  RED.registered.get("bullmq cmd").constructor.call(node, { queue: "queue" });
+  await promisify(node.listeners("close")[0]).call(node, false);
+  const afterClose = statuses.length;
+
+  // The config node keeps living and keeps publishing; a closed reader must
+  // not hear it. Unsubscribing on close makes that structural rather than
+  // something a flag has to remember.
+  queueConfig.publish("connected");
+
+  assert.equal(
+    statuses.length,
+    afterClose,
+    `status must not change after close, saw ${JSON.stringify(statuses.slice(afterClose))}`,
+  );
+  assert.equal(
+    statuses.some((status) => status.text === "connected"),
+    false,
+  );
+});
+
+test("config node keeps a live event over the memoized readiness promise", async () => {
+  const RED = createRED();
+  registerBullMQNodes(RED);
+  const Server = RED.registered.get("bullmq-queue-server").constructor;
+  const node = {};
+  Server.call(node, { name: "livecasts" });
+
+  // waitUntilReady() resolves instantly here, which is exactly what happens
+  // after a successful connect: RedisQueueBackend awaits connection.client,
+  // the promise built once in the constructor, and PostgresConnection memoizes
+  // readyPromise the same way. It says "was ready once", never "is ready now".
+  const backend = new EventEmitter();
+  backend.waitUntilReady = () => Promise.resolve();
+
+  node.watchBackend(backend);
+  // The datastore drops before the seed lands. The live event must win, or the
+  // node paints a green "connected" during the outage it exists to surface.
+  backend.emit("error", new Error("connection lost"));
+  await tick();
+  await tick();
+
+  assert.equal(node.backendStatus, "disconnected");
+
+  // And a reader attaching mid-outage sees the outage, not the stale promise.
+  const seen = [];
+  node.readBackendStatus((status) => seen.push(status));
+  assert.deepEqual(seen, ["disconnected"]);
+
+  // Recovery still works, through the live event.
+  backend.emit("ready");
+  assert.deepEqual(seen, ["disconnected", "connected"]);
+});
+
+test("config node reports disconnected when readiness rejects with no event", async () => {
+  const RED = createRED();
+  registerBullMQNodes(RED);
+  const Server = RED.registered.get("bullmq-queue-server").constructor;
+  const node = {};
+  Server.call(node, { name: "rejectcasts" });
+
+  // PostgresConnection.bootstrap() rejects on connect, auth, migration, or
+  // schema failure and emits nothing: its emitError only forwards idle-pool
+  // and LISTEN errors, and only when a listener is already attached. So a
+  // rejection with no event is the postgres failure path, not a corner case.
+  const backend = new EventEmitter();
+  backend.waitUntilReady = () => Promise.reject(new Error("ECONNREFUSED"));
+
+  node.watchBackend(backend);
+  await tick();
+  await tick();
+
+  assert.equal(
+    node.backendStatus,
+    "disconnected",
+    "a rejected readiness promise must not leave the node on connecting",
+  );
+
+  const seen = [];
+  node.readBackendStatus((status) => seen.push(status));
+  assert.deepEqual(seen, ["disconnected"]);
+});
+
+test("config node reports why the backend is unavailable, not just that it is", async () => {
+  const errors = [];
+  const RED = createRED({ error: (err) => errors.push(String(err)) });
+  registerBullMQNodes(RED);
+  const Server = RED.registered.get("bullmq-queue-server").constructor;
+  const node = {};
+  Server.call(node, { name: "whycasts" });
+
+  // The PostgreSQL failure shape: bootstrap() rejects and emits nothing, so
+  // this catch is the only place a bad password or a migration failure can
+  // reach the user.
+  const backend = new EventEmitter();
+  backend.waitUntilReady = () =>
+    Promise.reject(new Error("password authentication failed"));
+
+  node.watchBackend(backend);
+  await tick();
+  await tick();
+
+  assert.equal(node.backendStatus, "disconnected");
+  assert.equal(errors.length, 1, "exactly one report, not one per retry");
+  assert.match(errors[0], /password authentication failed/);
 });

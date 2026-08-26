@@ -335,7 +335,7 @@ test("maintained docs match current BullMQ runtime contracts", () => {
   assert.match(testing, /shutdown\.test\.js/);
   assert.match(testing, /async-style\.test\.js/);
 
-  assert.match(architecture, /`bullmq cmd`.*shared producer connection/i);
+  assert.match(architecture, /`bullmq cmd`.*shared queue's backend/i);
   assert.match(architecture, /config node owns the shared queue/i);
   assert.doesNotMatch(commands, /msg\.command/);
   assert.doesNotMatch(nodeGuide, /msg\.command/);
