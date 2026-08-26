@@ -37,7 +37,7 @@ Bull v4 Redis data is not automatically migrated. Drain, retire, or otherwise ha
 
 - `bullmq-queue-server`: shared BullMQ queue and Redis deployment config.
 - `bullmq cmd`: message-driven producer and queue administration commands.
-- `bullmq run`: BullMQ Worker that emits jobs into a Node-RED flow.
+- `bullmq run`: BullMQ Worker that emits jobs into a Node-RED flow and caps each job at 100 processing starts by default.
 - `bullmq job`: manual acknowledgement and active-job actions for manual `bullmq run` flows.
 - `bullmq events`: QueueEvents source node for global BullMQ events.
 - `bullmq flow`: FlowProducer node for parent/child job trees.
@@ -52,6 +52,8 @@ Supported deployment modes:
 - Redis Sentinel
 
 Authentication can use Redis ACL username/password. TLS supports CA, client certificate, client key, server name, and certificate verification. Cluster and MemoryDB prefixes must contain a hash tag, such as `{bull}`, to keep queue keys in one Redis Cluster slot for atomic operations.
+
+Independent queues may use different hash tags to spread load. Prefixes used in one `bullmq flow` tree or bulk flow batch must contain the same hash tag; each worker must use the exact prefix assigned to its queue in that flow.
 
 ## Job Schedulers
 
@@ -92,14 +94,15 @@ See [docs/COMMANDS.md](docs/COMMANDS.md).
 
 ## Unsupported
 
-| BullMQ feature                         | Reason                                                                                                    |
-| -------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Sandboxed processors                   | They bypass the Node-RED flow and downstream acknowledgement model.                                       |
-| Custom JavaScript backoff strategies   | Executable strategy code is not a safe Node-RED message contract. Use built-in fixed/exponential backoff. |
-| BullMQ Pro features                    | Pro groups, batches, and observables are not part of the open-source BullMQ dependency.                   |
-| Built-in dashboard                     | Use a dedicated queue UI; this package only provides Node-RED nodes.                                      |
-| Arbitrary method proxying              | Unrestricted method dispatch is hard to validate, document, secure, and test.                             |
-| Automatic Bull v4 Redis data migration | Bull and BullMQ do not provide a supported queue-data migration contract.                                 |
+| BullMQ feature                         | Reason                                                                                                           |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Sandboxed processors                   | They bypass the Node-RED flow and downstream acknowledgement model.                                              |
+| Custom JavaScript backoff strategies   | Executable strategy code is not a safe Node-RED message contract. Use built-in fixed/exponential backoff.        |
+| BullMQ Pro features                    | Pro groups, batches, and observables are not part of the open-source BullMQ dependency.                          |
+| Built-in dashboard                     | Use a dedicated queue UI; this package only provides Node-RED nodes.                                             |
+| Arbitrary method proxying              | Unrestricted method dispatch is hard to validate, document, secure, and test.                                    |
+| Dynamic child creation                 | Declare dependencies up front with `bullmq flow`; processor-owned `moveToWaitingChildren` wiring is not exposed. |
+| Automatic Bull v4 Redis data migration | Bull and BullMQ do not provide a supported queue-data migration contract.                                        |
 
 ## Examples
 

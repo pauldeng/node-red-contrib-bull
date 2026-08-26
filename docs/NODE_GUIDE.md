@@ -10,7 +10,7 @@ Deployment modes:
 - `cluster`: Redis Cluster and AWS MemoryDB.
 - `sentinel`: Redis Sentinel.
 
-Cluster and MemoryDB prefixes must contain a Redis hash tag; use `{bull}` unless you have a tested custom hash tag.
+Cluster and MemoryDB prefixes must contain a Redis hash tag. `{bull}` is the default. Independent queues may use different tags — `{orders}`, `{emails}` — to spread load across cluster nodes. Prefixes in one `bullmq flow` tree or bulk flow batch must contain the same hash tag so their atomic Redis operations stay in one slot. Each worker must use the exact prefix assigned to its queue in the flow.
 
 `removeOnComplete` and `removeOnFail` set queue-level auto-removal as BullMQ `defaultJobOptions`, keeping that many of the newest jobs in each state. New config nodes default to keeping 1000 completed and 5000 failed jobs. A blank field keeps every job, which is BullMQ's own default and grows Redis without bound.
 
@@ -54,7 +54,7 @@ Completion modes:
 - `immediate`: complete after sending the message.
 - `manual`: wait for downstream `bullmq job` acknowledgement. Fails the job after the ack timeout; set the timeout to `0` to wait indefinitely.
 
-Concurrency must be a positive integer. The optional limiter maximum and duration must either both be blank or both be positive integers.
+Concurrency and Max Started Attempts must be positive integers. Max Started Attempts defaults to 100 and bounds reprocessing loops from transitions that do not increment `attemptsMade`, including `moveToWait` and `moveToDelayed`. BullMQ fails the job unrecoverably before its processor runs for the 101st time. The optional limiter maximum and duration must either both be blank or both be positive integers.
 
 ## `bullmq job`
 
@@ -74,6 +74,14 @@ Non-terminal actions:
 - `getChildrenValues`
 - `getFailedChildrenValues`
 - `removeUnprocessedChildren`
+- `updateData`: replaces the job's stored data with `msg.jobData`, falling back to `msg.payload`. The new data survives a retry, so it is how a flow records which step a job reached.
+
+Step and retry transitions. Each hands the job's lock token back to BullMQ, so the job leaves the active state without counting a failed attempt, and the flow's acknowledgement is settled for it:
+
+- `moveToWait`: requeues the job to be picked up again. This is BullMQ's manual-retry pattern.
+- `moveToDelayed`: delays the job by `msg.delay` milliseconds and resumes it later. Requires `msg.delay`.
+
+Together with `updateData` these implement BullMQ's process-step-jobs pattern: record the step, then requeue or delay the job, and resume at that step on its next activation. The lock token these need never appears in a Node-RED message.
 
 Cancellation actions (BullMQ v6 cooperative cancellation):
 
@@ -100,7 +108,9 @@ Adds a BullMQ FlowProducer tree.
 
 Input:
 
-- `msg.payload`: BullMQ flow tree;
-- `msg.flowopts`: optional FlowProducer options.
+- `msg.payload`: a BullMQ flow tree, or an array of flow trees;
+- `msg.flowopts`: optional FlowProducer options, for a single tree.
+
+An array uses `FlowProducer.addBulk`, which atomically creates multiple independent root trees: every tree is added or none is. Use one flow tree when jobs are related by parent/child dependencies, even when that tree spans queues. `msg.flowopts` does not apply to an array, because `addBulk` takes no options argument; queue-level auto-removal is stamped onto each job's own `opts` instead, where anything the tree already sets wins. On Redis Cluster, omit each flow job's `prefix` to use the flow node's prefix throughout. If prefixes are set per job, they must contain the same hash tag, and each worker must use its queue's exact prefix. An empty array is an error.
 
 A child job in the tree that does not set `opts.jobId` gets a UUID as its job id (BullMQ v6 no longer assigns incremental numeric ids). Set `opts.jobId` on a child explicitly if the flow depends on a stable or predictable id.

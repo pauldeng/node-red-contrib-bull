@@ -195,7 +195,7 @@
     <li><b>CA</b>: PEM certificate authority text for validating private Redis certificates. Stored as a Node-RED credential.</li>
     <li><b>Client Cert</b>: PEM client certificate for mutual TLS deployments. Stored as a Node-RED credential.</li>
     <li><b>Client Key</b>: PEM client private key for mutual TLS deployments. Stored as a Node-RED credential.</li>
-    <li><b>Prefix</b>: BullMQ key prefix. Redis Cluster and MemoryDB prefixes must contain a hash tag such as <code>{bull}</code> so BullMQ keys stay in one hash slot for atomic operations.</li>
+    <li><b>Prefix</b>: BullMQ key prefix. Redis Cluster and MemoryDB prefixes must contain a hash tag such as <code>{bull}</code>. Independent queues may use different tags, but prefixes in one flow tree or bulk flow batch must contain the same hash tag for atomic operations. Each worker must use the exact prefix assigned to its queue in that flow.</li>
     <li><b>Keep Completed</b> / <b>Keep Failed</b>: Queue-level auto-removal, applied as BullMQ <code>defaultJobOptions</code>. Each keeps that many of the newest jobs in the state and removes older ones. Leaving a field blank keeps every job, which is BullMQ's own default and grows Redis without bound, so blank is only appropriate when something else prunes the queue. <code>msg.jobopts</code> overrides these defaults for <code>bullmq cmd</code>. For <code>bullmq flow</code>, per-queue <code>msg.flowopts.queuesOptions</code> defaults and then each job's <code>opts</code> take precedence.</li>
     <li><b>Telemetry</b>: Enables OpenTelemetry tracing for this queue's <code>Queue</code>, <code>Worker</code>, and <code>FlowProducer</code> instances using <a href="https://www.npmjs.com/package/bullmq-otel" target="_blank" rel="noopener noreferrer">bullmq-otel</a>. Off by default. <code>bullmq-otel</code> is an optional dependency and must be installed separately (<code>npm install bullmq-otel</code>) before enabling this switch. This node does not start or configure an OpenTelemetry SDK or exporter; the host Node-RED process owns that (for example NODE_OPTIONS auto-instrumentation, or an SDK bootstrapped from Node-RED's <code>settings.js</code>). When no OpenTelemetry provider is registered, <code>bullmq-otel</code> simply no-ops rather than erroring.</li>
     <li><b>Service Name</b>: Tracer and meter name reported to OpenTelemetry. Leave blank to use the <b>Queue</b> name.</li>
@@ -322,7 +322,11 @@ return msg;</pre>
   </div>
   <div class="form-row">
     <label for="node-input-concurrency"><i class="fa fa-random"></i> Concurrency</label>
-    <input type="number" id="node-input-concurrency" placeholder="1">
+    <input type="number" id="node-input-concurrency" min="1" step="1" placeholder="1">
+  </div>
+  <div class="form-row">
+    <label for="node-input-maxStartedAttempts"><i class="fa fa-repeat"></i> Max Started Attempts</label>
+    <input type="number" id="node-input-maxStartedAttempts" min="1" step="1" placeholder="100">
   </div>
   <div class="form-row">
     <label for="node-input-limiterMax"><i class="fa fa-tachometer"></i> Limiter Max</label>
@@ -345,6 +349,7 @@ return msg;</pre>
     <li><b>Completion</b>: <code>Immediate</code> completes the BullMQ job after the message is emitted. <code>Manual acknowledgement</code> keeps the job active until a downstream <code>bullmq job</code> node completes, fails, or updates it.</li>
     <li><b>Ack Timeout</b>: Maximum time in milliseconds to wait for manual acknowledgement before the node fails the active job. Set to <code>0</code> to wait indefinitely.</li>
     <li><b>Concurrency</b>: Number of jobs this worker can process at the same time.</li>
+    <li><b>Max Started Attempts</b>: Maximum times one job may start processing. Defaults to <code>100</code>. BullMQ then fails the job unrecoverably, which bounds loops created by repeated <code>moveToWait</code> or <code>moveToDelayed</code> actions.</li>
     <li><b>Limiter Max</b>: Optional worker-side rate limit count.</li>
     <li><b>Limiter Duration</b>: Optional worker-side rate limit window in milliseconds. Set with <b>Limiter Max</b>.</li>
   </ul>
@@ -395,6 +400,7 @@ return msg;</pre>
         completionMode: { value: "immediate" },
         ackTimeout: { value: 300000, validate: RED.validators.number() },
         concurrency: { value: 1, validate: positiveInteger },
+        maxStartedAttempts: { value: 100, validate: positiveInteger },
         limiterMax: {
           value: "",
           validate: function(value) {
@@ -442,6 +448,9 @@ return msg;</pre>
       <option value="removeUnprocessedChildren">Remove unprocessed children</option>
       <option value="cancelJob">Cancel job</option>
       <option value="cancelAllJobs">Cancel all jobs</option>
+      <option value="moveToWait">Requeue (moveToWait)</option>
+      <option value="moveToDelayed">Delay and resume (moveToDelayed)</option>
+      <option value="updateData">Update job data</option>
     </select>
   </div>
 </script>
@@ -469,6 +478,9 @@ return msg;</pre>
     <li><code>removeUnprocessedChildren</code>: Removes children that have not yet been processed.</li>
     <li><code>cancelJob</code>: Cancels the active job by aborting its processor signal, which fails the job and lets the queue's normal attempts/backoff retry policy apply. Acknowledgement-scoped: it needs <code>msg.bull.ackId</code>, so it only reaches manual-completion jobs that have not yet settled. <code>msg.reason</code> sets the cancellation reason, default <code>"BullMQ job cancelled"</code>. Outputs <code>true</code> on <code>msg.payload</code>; if BullMQ reports no cancellable processor for the job, the node raises an error instead.</li>
     <li><code>cancelAllJobs</code>: Cancels every active manual job on the same <code>bullmq run</code> node the same way as <code>cancelJob</code>. <code>msg.reason</code> sets the cancellation reason, default <code>"BullMQ job cancelled"</code>. Outputs <code>true</code> on <code>msg.payload</code>.</li>
+    <li><code>moveToWait</code>: Puts the active job back in the waiting state to be picked up again, without counting a failed attempt. Terminal for this acknowledgement.</li>
+    <li><code>moveToDelayed</code>: Delays the active job by <code>msg.delay</code> milliseconds and resumes it later, without counting a failed attempt. Terminal for this acknowledgement. Combine with <code>updateData</code> to resume from a recorded step.</li>
+    <li><code>updateData</code>: Replaces the job's stored data with <code>msg.jobData</code>, or <code>msg.payload</code> when that is absent, and survives a retry. Non-terminal, so the flow still has to settle the acknowledgement. Use it to record which step a job reached before <code>moveToDelayed</code>.</li>
   </ul>
 
   <h3>Example</h3>
@@ -585,11 +597,12 @@ return msg;</pre>
 
   <h3>Input message</h3>
   <ul>
-    <li><code>msg.payload</code>: BullMQ flow tree. The root object contains <code>name</code>, <code>queueName</code>, <code>data</code>, optional <code>opts</code>, and optional <code>children</code>.</li>
-    <li><code>msg.flowopts</code>: Optional FlowProducer options applied to the add call.</li>
+    <li><code>msg.payload</code>: One BullMQ flow tree, or an array of independent root trees added atomically with <code>FlowProducer.addBulk</code>. A root object contains <code>name</code>, <code>queueName</code>, <code>data</code>, optional <code>opts</code>, and optional <code>children</code>.</li>
+    <li><code>msg.flowopts</code>: Optional FlowProducer options applied when adding one tree. It does not apply to an array.</li>
   </ul>
 
   <p>A child job without an explicit <code>opts.jobId</code> gets a UUID from BullMQ v6, not the incremental numeric id used before.</p>
+  <p>Use one tree for related parent/child jobs, including dependencies that span queues. Use an array only for independent root trees that must all be added or none added. On Redis Cluster, omit each flow job's <code>prefix</code> to use this node's prefix throughout. If prefixes are set per job, they must contain the same hash tag, and each worker must use its queue's exact prefix.</p>
 
   <h3>Example</h3>
   <pre>msg.payload = {

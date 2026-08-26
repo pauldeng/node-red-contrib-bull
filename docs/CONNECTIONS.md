@@ -20,7 +20,9 @@ Use deployment `cluster` and provide startup nodes as a comma- or newline-separa
 
 Cluster auth and TLS are applied through ioredis `redisOptions`. The runtime always sets a DNS lookup passthrough for cluster discovery, including non-TLS deployments.
 
-The BullMQ prefix must contain a Redis hash tag, normally `{bull}`. Untagged Cluster prefixes are rejected to prevent `CROSSSLOT` failures.
+The BullMQ prefix must contain a Redis hash tag. Untagged Cluster prefixes are rejected to prevent `CROSSSLOT` failures.
+
+`{bull}` is the default. Independent queues may use different tagged prefixes — `{orders}`, `{emails}` — to spread load across cluster nodes. Prefixes used in one `bullmq flow` tree or `FlowProducer.addBulk` batch must instead contain the same Redis hash tag because BullMQ updates those queues atomically and all involved keys must share a slot. Exact prefixes may differ, such as `{flow}:orders` and `{flow}:emails`; each worker must use the exact prefix assigned to its queue in the flow.
 
 ## AWS MemoryDB
 

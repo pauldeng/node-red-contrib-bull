@@ -26,6 +26,7 @@
 - `test/node-red-registration.test.js`: Node-RED node type registration.
 - `test/editor-contract.test.js`: static editor surface.
 - `test/docs-contract.test.js`: required docs and examples.
+- `test/serialization.test.js`: message-safe job serialization, including that no lock token escapes.
 - `test/telemetry.test.js`: opt-in telemetry wiring, including the QueueEvents exclusion.
 - `test/docker-matrix-contract.test.js`: Docker deployment fixture and runner contract.
 - `test/integration-standalone.test.js`: opt-in local Redis Node-RED runtime flow tests for add/run, manual acknowledgement, repeat schedulers, delayed jobs, priorities, rate limits, deduplication events, and flow producer jobs.

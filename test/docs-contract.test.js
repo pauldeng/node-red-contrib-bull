@@ -77,6 +77,9 @@ test("production docs cover persistence, payload protection, and flow retention"
   for (const text of ["bullmq flow", "queuesOptions", "job's own `opts`"]) {
     assert.match(nodeGuide, new RegExp(text));
   }
+  assert.match(connections, /same Redis hash tag/);
+  assert.match(nodeGuide, /independent root trees/);
+  assert.doesNotMatch(nodeGuide, /only way to add jobs to several queues/);
 });
 
 test("release documentation covers npm and Node-RED Flow Library publication", () => {

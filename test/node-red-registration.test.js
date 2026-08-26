@@ -647,7 +647,14 @@ function constructRunNode(config) {
 }
 
 test("bullmq run applies only a complete positive limiter pair", () => {
-  assert.equal(constructRunNode({}).createdOptions[0].limiter, undefined);
+  const defaults = constructRunNode({}).createdOptions[0];
+  assert.equal(defaults.maxStartedAttempts, 100);
+  assert.equal(defaults.limiter, undefined);
+  assert.equal(
+    constructRunNode({ maxStartedAttempts: "12" }).createdOptions[0]
+      .maxStartedAttempts,
+    12,
+  );
   assert.deepEqual(
     constructRunNode({ limiterMax: "2", limiterDuration: "1000" })
       .createdOptions[0].limiter,
@@ -672,8 +679,107 @@ test("bullmq run rejects invalid concurrency and limiter values", () => {
       /Limiter Duration.*positive integer/i,
     ],
     [{ concurrency: "0" }, /Concurrency.*positive integer/i],
+    [{ maxStartedAttempts: "0" }, /Max Started Attempts.*positive integer/i],
+    [{ maxStartedAttempts: "1.5" }, /Max Started Attempts.*positive integer/i],
   ];
   for (const [config, error] of cases) {
     assert.throws(() => constructRunNode(config), error);
   }
+});
+
+test("bullmq flow adds an array of trees atomically through addBulk", async () => {
+  const calls = [];
+  const flowProducer = {
+    async waitUntilReady() {},
+    async add(flow, opts) {
+      calls.push({ method: "add", flow, opts });
+      return { job: { id: "1" }, children: [] };
+    },
+    async addBulk(flows) {
+      calls.push({ method: "addBulk", flows });
+      return flows.map((flow, index) => ({
+        job: { id: String(index + 1), queueName: flow.queueName },
+        children: [],
+      }));
+    },
+    on() {},
+  };
+  const queueConfig = {
+    // Queue-level retention must reach bulk jobs too, even though
+    // FlowProducer.addBulk takes no options argument.
+    config: { queueName: "flowcasts", defaultJobOptions: { removeOnFail: 7 } },
+    register() {},
+    createFlowProducer: () => flowProducer,
+    deregister(node, done) {
+      done();
+    },
+  };
+  const RED = createRED({ getNode: () => queueConfig });
+  registerBullMQNodes(RED);
+
+  const node = {};
+  RED.registered.get("bullmq flow").constructor.call(node, { queue: "queue" });
+
+  const outputs = [];
+  const trees = [
+    { name: "a", queueName: "queue-a", data: {} },
+    {
+      name: "b",
+      queueName: "queue-b",
+      data: {},
+      opts: { removeOnFail: 99 },
+      children: [{ name: "b-child", queueName: "queue-c", data: {} }],
+    },
+  ];
+  await new Promise((resolve) => {
+    node.emit(
+      "input",
+      { payload: trees },
+      (msg) => outputs.push(msg),
+      () => resolve(),
+    );
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].method, "addBulk", "an array must use addBulk");
+  assert.equal(calls[0].flows.length, 2);
+  // Retention applied where absent, caller's own opts left alone, children too.
+  assert.deepEqual(calls[0].flows[0].opts, { removeOnFail: 7 });
+  assert.deepEqual(calls[0].flows[1].opts, { removeOnFail: 99 });
+  assert.deepEqual(calls[0].flows[1].children[0].opts, { removeOnFail: 7 });
+  assert.equal(outputs[0].payload.length, 2);
+  assert.equal(outputs[0].payload[1].job.queueName, "queue-b");
+});
+
+test("bullmq flow rejects an empty array of trees", async () => {
+  const flowProducer = {
+    async waitUntilReady() {},
+    async addBulk() {
+      throw new Error("addBulk must not be called for an empty array");
+    },
+    on() {},
+  };
+  const queueConfig = {
+    config: { queueName: "flowcasts" },
+    register() {},
+    createFlowProducer: () => flowProducer,
+    deregister(node, done) {
+      done();
+    },
+  };
+  const RED = createRED({ getNode: () => queueConfig });
+  registerBullMQNodes(RED);
+
+  const node = {};
+  RED.registered.get("bullmq flow").constructor.call(node, { queue: "queue" });
+
+  const err = await new Promise((resolve) => {
+    node.emit(
+      "input",
+      { payload: [] },
+      () => {},
+      (error) => resolve(error),
+    );
+  });
+  assert.match(String(err), /at least one flow tree/);
 });
