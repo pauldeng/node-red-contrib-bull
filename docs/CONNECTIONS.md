@@ -4,7 +4,15 @@
 
 Use deployment `single`, host, port, optional database, optional username/password, and optional TLS.
 
-Producer commands use bounded retries so Node-RED input handlers fail instead of hanging forever. Workers and QueueEvents use persistent retry behavior required by BullMQ.
+Producer commands fail fast so a Node-RED input handler errors instead of hanging forever: the BullMQ owner sets `skipWaitingForReady: true` and the socket keeps `maxRetriesPerRequest: 1`, which rejects in about a second when Redis is down. Workers and QueueEvents use the persistent retry behavior BullMQ requires (`maxRetriesPerRequest: null`).
+
+The offline queue stays enabled for producers too, which departs from BullMQ's production guide. Disabling it does fail faster, but it also rejects messages emitted during the brief connection window after a Node-RED deploy.
+
+Every data connection reconnects with exponential backoff floored at 1s and capped at 20s, which is what [BullMQ's production guide](https://docs.bullmq.io/guide/going-to-production) recommends. Cluster discovery uses the same range through `clusterRetryStrategy`, and Sentinel discovery uses it through `sentinelRetryStrategy`.
+
+## Production Redis Configuration
+
+Redis must use `maxmemory-policy=noeviction`; evicting arbitrary BullMQ keys can corrupt queue behavior. Redis data must also be durable. For self-managed Redis, BullMQ recommends Append Only File (AOF) persistence, commonly with writes flushed once per second. For managed Redis, enable the provider's durable persistence and backup features appropriate to the job-loss tolerance of the deployment.
 
 ## Redis Cluster
 
@@ -62,3 +70,5 @@ Disable verification only when the Redis deployment cannot be configured with a 
 ## Secrets And Imported Flows
 
 Passwords, CA data, client certificates, and private keys are read only from Node-RED credentials.
+
+BullMQ stores job names, payloads, results, and failure details in Redis in clear text. Avoid sensitive job data; when it is unavoidable, encrypt sensitive fields before sending the job to `bullmq cmd` or `bullmq flow` and decrypt them only in a trusted worker path.

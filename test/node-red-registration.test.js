@@ -159,6 +159,79 @@ test("bullmq flow reports FlowProducer errors on its own node status", async () 
   assert.equal(errors.length, 1, "a single error must be reported once");
 });
 
+test("bullmq flow applies config retention below flow and job overrides", async () => {
+  let addCall;
+  const flowProducer = new EventEmitter();
+  flowProducer.waitUntilReady = async function waitUntilReady() {};
+  flowProducer.close = async function close() {};
+  flowProducer.add = async function add(flow, options) {
+    addCall = { flow, options };
+    return { job: { id: "flow-job", name: flow.name } };
+  };
+  const queueConfig = {
+    config: {
+      queueName: "flowcasts",
+      defaultJobOptions: { removeOnComplete: 1000, removeOnFail: 5000 },
+    },
+    register() {},
+    createFlowProducer() {
+      return flowProducer;
+    },
+    async releaseResource() {},
+    deregister(node, done) {
+      done();
+    },
+  };
+  const RED = createRED({ getNode: () => queueConfig });
+  registerBullMQNodes(RED);
+  const FlowNode = RED.registered.get("bullmq flow").constructor;
+  const node = {};
+  FlowNode.call(node, { queue: "queue" });
+
+  const payload = {
+    name: "parent",
+    queueName: "alpha",
+    data: {},
+    children: [
+      {
+        name: "child",
+        queueName: "beta",
+        data: {},
+        opts: { removeOnFail: false },
+      },
+    ],
+  };
+  const flowopts = {
+    queuesOptions: {
+      alpha: {
+        defaultJobOptions: { removeOnComplete: 25 },
+      },
+    },
+  };
+
+  await new Promise((resolve, reject) => {
+    node.emit(
+      "input",
+      { payload, flowopts },
+      () => {},
+      (err) => (err ? reject(err) : resolve()),
+    );
+  });
+
+  assert.equal(addCall.flow, payload);
+  assert.deepEqual(addCall.options, {
+    queuesOptions: {
+      alpha: {
+        defaultJobOptions: { removeOnComplete: 25, removeOnFail: 5000 },
+      },
+      beta: {
+        defaultJobOptions: { removeOnComplete: 1000, removeOnFail: 5000 },
+      },
+    },
+  });
+  assert.deepEqual(payload.children[0].opts, { removeOnFail: false });
+});
+
 test("config node createFlowProducer does not attach its own error listener", async () => {
   const RED = createRED();
   registerBullMQNodes(RED);
@@ -502,7 +575,13 @@ test("config node exposes the shared producer connection", async () => {
   try {
     assert.ok(connection, "producer connection must be created on demand");
     assert.equal(connection, node.producerConnection);
-    assert.equal(connection.getMaxListeners(), 0);
+    // Never 0: Node reads 0 as unlimited, but BullMQ's increaseMaxListeners
+    // computes getMaxListeners() + n, which turns 0 into a cap of 3.
+    assert.notEqual(connection.getMaxListeners(), 0);
+    assert.ok(
+      connection.getMaxListeners() >= 100,
+      `producer connection listener budget too small: ${connection.getMaxListeners()}`,
+    );
     assert.ok(node.queue, "the shared queue must be created with it");
     assert.equal(node.getProducerConnection(), connection);
   } finally {

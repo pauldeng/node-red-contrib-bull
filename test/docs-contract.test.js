@@ -52,12 +52,30 @@ test("README documents BullMQ migration, supported deployments, and unsupported 
     "Sentinel",
     "Unsupported",
     "maxmemory-policy=noeviction",
+    "Append Only File",
+    "clear text",
     "Bull v4 Redis data is not automatically migrated",
   ]) {
     assert.match(
       readme,
       new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
     );
+  }
+});
+
+test("production docs cover persistence, payload protection, and flow retention", () => {
+  const connections = read("docs/CONNECTIONS.md");
+  const nodeGuide = read("docs/NODE_GUIDE.md");
+  for (const text of [
+    "Append Only File",
+    "maxmemory-policy=noeviction",
+    "clear text",
+    "sentinelRetryStrategy",
+  ]) {
+    assert.match(connections, new RegExp(text));
+  }
+  for (const text of ["bullmq flow", "queuesOptions", "job's own `opts`"]) {
+    assert.match(nodeGuide, new RegExp(text));
   }
 });
 

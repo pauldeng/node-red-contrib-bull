@@ -54,6 +54,21 @@ test("config editor exposes deployment, cluster, sentinel, auth, and TLS fields"
   }
 });
 
+test("auto-removal fields accept only blank or non-negative whole numbers", () => {
+  for (const field of ["removeOnComplete", "removeOnFail"]) {
+    assert.match(
+      html,
+      new RegExp(
+        `<input[^>]+type="number"[^>]+id="node-config-input-${field}"[^>]+min="0"[^>]+step="1"`,
+      ),
+    );
+    assert.match(
+      html,
+      new RegExp(`${field}: \\{[^}]+validate: validateKeepCount`),
+    );
+  }
+});
+
 test("worker, job, events, and flow editors expose their stable config fields", () => {
   for (const field of [
     "completionMode",
@@ -91,6 +106,9 @@ test("help documents every config node field", () => {
     "Client Cert",
     "Client Key",
     "Prefix",
+    "Keep Completed",
+    "Keep Failed",
+    "defaultJobOptions",
     "Telemetry",
     "Service Name",
     "Metrics",
