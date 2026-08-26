@@ -77,6 +77,25 @@ test("package metadata targets BullMQ, Node.js 22.9+, and Node-RED 5.x", () => {
   assert.equal(packageJson["node-red"]?.version, ">=5.0.0 <6");
 
   assert.equal(packageJson.devDependencies?.["@playwright/test"], "1.62.1");
+
+  // Optional peers: declared so the version contract is visible, optional so a
+  // Redis-only install pulls neither, and pinned as devDependencies so the
+  // tests actually exercise the enabled paths.
+  for (const peer of ["bullmq-otel", "pg"]) {
+    assert.equal(
+      typeof packageJson.peerDependencies?.[peer],
+      "string",
+      `${peer} must declare a peer range`,
+    );
+    assert.equal(
+      packageJson.peerDependenciesMeta?.[peer]?.optional,
+      true,
+      `${peer} must be an optional peer`,
+    );
+    assert.equal(packageJson.dependencies?.[peer], undefined);
+  }
+  assert.equal(packageJson.peerDependencies?.pg, ">=8.0.0");
+  assert.equal(packageJson.devDependencies?.pg, "8.23.0");
   assert.equal(packageJson.devDependencies?.["node-red"], "5.0.4");
   assert.equal(packageJson.devDependencies?.prettier, "3.9.6");
   assert.ok(packageJson.devDependencies?.["node-red-node-test-helper"]);
