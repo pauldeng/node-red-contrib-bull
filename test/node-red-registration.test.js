@@ -29,18 +29,18 @@ function createRED(options = {}) {
   };
 }
 
-test("registers the legacy and BullMQ node types", () => {
+test("registers only BullMQ v6 node types", () => {
   const RED = createRED();
 
   registerBullMQNodes(RED);
 
   assert.deepEqual(Array.from(RED.registered.keys()).sort(), [
-    "bull cmd",
-    "bull events",
-    "bull flow",
-    "bull job",
-    "bull run",
-    "bull-queue-server",
+    "bullmq cmd",
+    "bullmq events",
+    "bullmq flow",
+    "bullmq job",
+    "bullmq run",
+    "bullmq-queue-server",
   ]);
 });
 
@@ -49,7 +49,7 @@ test("config node declares credential-backed secret fields", () => {
 
   registerBullMQNodes(RED);
 
-  const configNode = RED.registered.get("bull-queue-server");
+  const configNode = RED.registered.get("bullmq-queue-server");
   assert.deepEqual(Object.keys(configNode.options.credentials).sort(), [
     "password",
     "sentinelPassword",
@@ -59,7 +59,7 @@ test("config node declares credential-backed secret fields", () => {
   ]);
 });
 
-test("bull flow reports Redis connection status when FlowProducer is ready", async () => {
+test("bullmq flow reports Redis connection status when FlowProducer is ready", async () => {
   const statuses = [];
   let readyCalls = 0;
   const flowProducer = {
@@ -91,7 +91,7 @@ test("bull flow reports Redis connection status when FlowProducer is ready", asy
   });
 
   registerBullMQNodes(RED);
-  const FlowNode = RED.registered.get("bull flow").constructor;
+  const FlowNode = RED.registered.get("bullmq flow").constructor;
   const node = {};
   FlowNode.call(node, { queue: "queue" });
 
@@ -110,7 +110,7 @@ test("bull flow reports Redis connection status when FlowProducer is ready", asy
   });
 });
 
-test("bull flow reports FlowProducer errors on its own node status", async () => {
+test("bullmq flow reports FlowProducer errors on its own node status", async () => {
   const statuses = [];
   const errors = [];
   const flowProducer = new EventEmitter();
@@ -141,7 +141,7 @@ test("bull flow reports FlowProducer errors on its own node status", async () =>
   });
 
   registerBullMQNodes(RED);
-  const FlowNode = RED.registered.get("bull flow").constructor;
+  const FlowNode = RED.registered.get("bullmq flow").constructor;
   FlowNode.call({}, { queue: "queue" });
   await tick();
 
@@ -162,7 +162,7 @@ test("bull flow reports FlowProducer errors on its own node status", async () =>
 test("config node createFlowProducer does not attach its own error listener", async () => {
   const RED = createRED();
   registerBullMQNodes(RED);
-  const Server = RED.registered.get("bull-queue-server").constructor;
+  const Server = RED.registered.get("bullmq-queue-server").constructor;
 
   const node = {};
   Server.call(node, { name: "flowcasts" });
@@ -183,7 +183,7 @@ test("config node createFlowProducer does not attach its own error listener", as
   }
 });
 
-test("bull run reports worker errors on its own node status", () => {
+test("bullmq run reports worker errors on its own node status", () => {
   const statuses = [];
   const errors = [];
   const worker = new EventEmitter();
@@ -213,7 +213,7 @@ test("bull run reports worker errors on its own node status", () => {
   });
 
   registerBullMQNodes(RED);
-  const RunNode = RED.registered.get("bull run").constructor;
+  const RunNode = RED.registered.get("bullmq run").constructor;
   RunNode.call({}, { queue: "queue", completionMode: "immediate" });
 
   assert.equal(worker.listenerCount("error"), 1);
@@ -227,7 +227,7 @@ test("bull run reports worker errors on its own node status", () => {
   assert.equal(errors.length, 1);
 });
 
-test("bull events reports QueueEvents errors on its own node status", async () => {
+test("bullmq events reports QueueEvents errors on its own node status", async () => {
   const statuses = [];
   const errors = [];
   const queueEvents = new EventEmitter();
@@ -258,7 +258,7 @@ test("bull events reports QueueEvents errors on its own node status", async () =
   });
 
   registerBullMQNodes(RED);
-  const EventsNode = RED.registered.get("bull events").constructor;
+  const EventsNode = RED.registered.get("bullmq events").constructor;
   EventsNode.call({}, { queue: "queue" });
   await tick();
 
@@ -291,7 +291,7 @@ function createCmdQueueConfig(connection) {
   };
 }
 
-test("bull cmd reflects the shared producer connection state", () => {
+test("bullmq cmd reflects the shared producer connection state", () => {
   const statuses = [];
   const connection = new EventEmitter();
   connection.status = "connecting";
@@ -305,7 +305,7 @@ test("bull cmd reflects the shared producer connection state", () => {
   });
 
   registerBullMQNodes(RED);
-  const CmdNode = RED.registered.get("bull cmd").constructor;
+  const CmdNode = RED.registered.get("bullmq cmd").constructor;
   CmdNode.call({}, { queue: "queue" });
 
   assert.ok(
@@ -335,7 +335,7 @@ test("bull cmd reflects the shared producer connection state", () => {
   });
 });
 
-test("bull cmd shows connected immediately when the connection is already ready", () => {
+test("bullmq cmd shows connected immediately when the connection is already ready", () => {
   const statuses = [];
   const connection = new EventEmitter();
   connection.status = "ready";
@@ -349,7 +349,7 @@ test("bull cmd shows connected immediately when the connection is already ready"
   });
 
   registerBullMQNodes(RED);
-  const CmdNode = RED.registered.get("bull cmd").constructor;
+  const CmdNode = RED.registered.get("bullmq cmd").constructor;
   CmdNode.call({}, { queue: "queue" });
 
   assert.deepEqual(statuses.at(-1), {
@@ -359,7 +359,7 @@ test("bull cmd shows connected immediately when the connection is already ready"
   });
 });
 
-test("bull cmd removes its connection listeners on close", async () => {
+test("bullmq cmd removes its connection listeners on close", async () => {
   const connection = new EventEmitter();
   connection.status = "connecting";
   const RED = createRED({
@@ -369,13 +369,13 @@ test("bull cmd removes its connection listeners on close", async () => {
   });
 
   registerBullMQNodes(RED);
-  const CmdNode = RED.registered.get("bull cmd").constructor;
+  const CmdNode = RED.registered.get("bullmq cmd").constructor;
   const node = {};
   CmdNode.call(node, { queue: "queue" });
 
   assert.ok(
     connection.listenerCount("ready") > 0,
-    "bull cmd must watch the shared connection",
+    "bullmq cmd must watch the shared connection",
   );
 
   const handler = node.listeners("close")[0];
@@ -386,7 +386,7 @@ test("bull cmd removes its connection listeners on close", async () => {
   assert.equal(connection.listenerCount("error"), 0);
 });
 
-test("bull events shows connecting before the connection is ready", async () => {
+test("bullmq events shows connecting before the connection is ready", async () => {
   const statuses = [];
   let released = false;
   const queueEvents = new EventEmitter();
@@ -418,7 +418,7 @@ test("bull events shows connecting before the connection is ready", async () => 
   });
 
   registerBullMQNodes(RED);
-  const EventsNode = RED.registered.get("bull events").constructor;
+  const EventsNode = RED.registered.get("bullmq events").constructor;
   EventsNode.call({}, { queue: "queue" });
 
   assert.deepEqual(statuses.at(-1), {
@@ -438,7 +438,7 @@ test("bull events shows connecting before the connection is ready", async () => 
   });
 });
 
-test("bull flow shows disconnected when the initial connection fails", async () => {
+test("bullmq flow shows disconnected when the initial connection fails", async () => {
   const statuses = [];
   const errors = [];
   const flowProducer = new EventEmitter();
@@ -471,7 +471,7 @@ test("bull flow shows disconnected when the initial connection fails", async () 
   });
 
   registerBullMQNodes(RED);
-  const FlowNode = RED.registered.get("bull flow").constructor;
+  const FlowNode = RED.registered.get("bullmq flow").constructor;
   FlowNode.call({}, { queue: "queue" });
   await tick();
 
@@ -486,7 +486,7 @@ test("bull flow shows disconnected when the initial connection fails", async () 
 test("config node exposes the shared producer connection", async () => {
   const RED = createRED();
   registerBullMQNodes(RED);
-  const Server = RED.registered.get("bull-queue-server").constructor;
+  const Server = RED.registered.get("bullmq-queue-server").constructor;
 
   const node = {};
   Server.call(node, { name: "cmdcasts" });
@@ -517,7 +517,7 @@ test("config node exposes the shared producer connection", async () => {
 test("config node createWorker does not attach its own error listener", async () => {
   const RED = createRED();
   registerBullMQNodes(RED);
-  const Server = RED.registered.get("bull-queue-server").constructor;
+  const Server = RED.registered.get("bullmq-queue-server").constructor;
 
   const node = {};
   Server.call(node, { name: "runcasts" });
@@ -559,7 +559,7 @@ function constructRunNode(config) {
   const RED = createRED({ getNode: () => queueConfig });
   registerBullMQNodes(RED);
   const node = {};
-  RED.registered.get("bull run").constructor.call(node, {
+  RED.registered.get("bullmq run").constructor.call(node, {
     queue: "queue",
     completionMode: "immediate",
     ...config,
@@ -567,7 +567,7 @@ function constructRunNode(config) {
   return { createdOptions, node };
 }
 
-test("bull run applies only a complete positive limiter pair", () => {
+test("bullmq run applies only a complete positive limiter pair", () => {
   assert.equal(constructRunNode({}).createdOptions[0].limiter, undefined);
   assert.deepEqual(
     constructRunNode({ limiterMax: "2", limiterDuration: "1000" })
@@ -576,7 +576,7 @@ test("bull run applies only a complete positive limiter pair", () => {
   );
 });
 
-test("bull run rejects invalid concurrency and limiter values", () => {
+test("bullmq run rejects invalid concurrency and limiter values", () => {
   const cases = [
     [{ limiterMax: "2", limiterDuration: "" }, /set together/i],
     [{ limiterMax: "", limiterDuration: "1000" }, /set together/i],

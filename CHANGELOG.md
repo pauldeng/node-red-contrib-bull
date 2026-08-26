@@ -6,14 +6,15 @@ All notable changes to this package are documented here.
 
 - Upgraded to BullMQ 6.2.1 (from 5.80.9); ioredis stays pinned at 5.11.1. Persisted BullMQ v5 repeatable-job data is not migrated to v6 -- remove it before upgrading. See docs/MIGRATION.md.
 - Raised the runtime floor to Node.js 22.9+ and Node-RED 5.x, dropping Node.js 18/20 and Node-RED 4.1.x support.
+- Breaking: replaced all `bull*` node type names with `bullmq*` names; old flow types are not registered.
+- Breaking: removed `msg.command`, `msg.jobid`, plaintext credential fallbacks, and the `memorydb` deployment alias.
+- Breaking: removed repeatable-job command aliases and `add` repeat options. Use BullMQ v6 Job Scheduler commands with `msg.schedulerId`, `msg.repeat.pattern`, optional `msg.repeat.tz`, and `msg.template`.
 - Breaking: the `paused` job state is gone from BullMQ -- `getJobState` now reports `waiting` for a paused-queue job and `getJobCounts` no longer has a `paused` key. Use the new `isPaused` command to check the queue itself.
-- Breaking: `bull flow` child jobs without an explicit `opts.jobId` now get UUIDs instead of incremental numeric ids.
-- Breaking: BullMQ removed `repeat.utc` in favor of `repeat.tz`. This package still translates a legacy `repeat.utc: true` into `repeat.tz: "UTC"`, but a truthy `utc` combined with a conflicting `tz` now throws instead of picking one silently. A falsy `repeat.utc` is dropped.
-- Breaking: the default `bull events` filter now includes `retries-exhausted`. A flow using an empty event filter starts receiving this additional event type.
-- BullMQ removed its own legacy repeatable-job methods, but this package's `getRepeatableJobs`/`getRepeatableJobByKey`/`removeRepeatableByKey`/`count` aliases are unaffected -- they were already implemented against Job Schedulers, not BullMQ's removed methods.
-- Added BullMQ v6 cooperative job cancellation: `bull job` gains `cancelJob` and `cancelAllJobs`, acknowledgement-scoped like every other `bull job` action.
-- Added `isPaused`, `isMaxed`, and `getVersion` to `bull cmd`.
-- Added opt-in OpenTelemetry tracing and metrics for `Queue`, `Worker`, and `FlowProducer` (`telemetry`, `telemetryServiceName`, `telemetryMetrics` on `bull-queue-server`), off by default. See docs/TELEMETRY.md.
+- Breaking: `bullmq flow` child jobs without an explicit `opts.jobId` now get UUIDs instead of incremental numeric ids.
+- Breaking: the default `bullmq events` filter now includes `retries-exhausted`. A flow using an empty event filter starts receiving this additional event type.
+- Added BullMQ v6 cooperative job cancellation: `bullmq job` gains `cancelJob` and `cancelAllJobs`, acknowledgement-scoped like every other `bullmq job` action.
+- Added `isPaused`, `isMaxed`, and `getVersion` to `bullmq cmd`.
+- Added opt-in OpenTelemetry tracing and metrics for `Queue`, `Worker`, and `FlowProducer` (`telemetry`, `telemetryServiceName`, `telemetryMetrics` on `bullmq-queue-server`), off by default. See docs/TELEMETRY.md.
 - Rejected `addBulk` entries that carry repeat options, pointing at the Job Scheduler commands instead.
 - Updated development dependencies: @playwright/test 1.62.1, node-red 5.0.4, prettier 3.9.6.
 

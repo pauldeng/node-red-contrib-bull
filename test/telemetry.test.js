@@ -57,7 +57,7 @@ function fakeConnection(role) {
 function buildServerNode(config, redOptions = {}) {
   const RED = createRED(redOptions);
   registerBullMQNodes(RED);
-  const Server = RED.registered.get("bull-queue-server").constructor;
+  const Server = RED.registered.get("bullmq-queue-server").constructor;
   const node = {};
   Server.call(node, config);
   // Bypass the production connection factory (and its attachErrorListener,

@@ -17,7 +17,7 @@ Update [CONNECTIONS.md](CONNECTIONS.md) and `test/connections.test.js`. Run the 
 
 ## Scheduler Changes
 
-Update `test/scheduler.test.js`. Legacy repeat behavior must keep using exact scheduler ids.
+Update `test/scheduler.test.js`. Native Job Scheduler lookup and removal must keep using exact scheduler ids.
 
 ## Editor Changes
 

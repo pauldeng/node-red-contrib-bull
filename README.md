@@ -8,7 +8,7 @@
 
 Node-RED nodes for BullMQ-backed Redis job queues.
 
-This package targets BullMQ 6.2.1 and Node-RED 5. It preserves the legacy `bull-queue-server`, `bull cmd`, and `bull run` node types where BullMQ has compatible behavior, and adds `bull job`, `bull events`, and `bull flow`.
+This package targets BullMQ 6.2.1 and Node-RED 5. Version 2 is a breaking release: it uses BullMQ v6 node names, commands, and Job Scheduler inputs only.
 
 ## Installation
 
@@ -32,12 +32,12 @@ Bull v4 Redis data is not automatically migrated. Drain, retire, or otherwise ha
 
 ## Nodes
 
-- `bull-queue-server`: shared BullMQ queue and Redis deployment config.
-- `bull cmd`: message-driven producer and queue administration commands.
-- `bull run`: BullMQ Worker that emits jobs into a Node-RED flow.
-- `bull job`: manual acknowledgement and active-job actions for manual `bull run` flows.
-- `bull events`: QueueEvents source node for global BullMQ events.
-- `bull flow`: FlowProducer node for parent/child job trees.
+- `bullmq-queue-server`: shared BullMQ queue and Redis deployment config.
+- `bullmq cmd`: message-driven producer and queue administration commands.
+- `bullmq run`: BullMQ Worker that emits jobs into a Node-RED flow.
+- `bullmq job`: manual acknowledgement and active-job actions for manual `bullmq run` flows.
+- `bullmq events`: QueueEvents source node for global BullMQ events.
+- `bullmq flow`: FlowProducer node for parent/child job trees.
 
 ## Redis Deployments
 
@@ -50,27 +50,29 @@ Supported deployment modes:
 
 Authentication can use Redis ACL username/password. TLS supports CA, client certificate, client key, server name, and certificate verification. Cluster and MemoryDB prefixes must contain a hash tag, such as `{bull}`, to keep queue keys in one Redis Cluster slot for atomic operations.
 
-## Legacy Repeat Cron Compatibility
+## Job Schedulers
 
-The legacy repeat flow remains supported through BullMQ Job Schedulers:
+Use the native BullMQ v6 Job Scheduler shape:
 
 ```js
-msg.payload = "gateway-FCC23DFFFE0AA2A8";
-msg.cmd = "add";
-msg.jobopts = {
-  jobId: msg.payload,
-  repeat: {
-    cron: "30 9,19,29,39,49,59 * * * *",
-  },
+msg.cmd = "upsertJobScheduler";
+msg.schedulerId = "gateway-FCC23DFFFE0AA2A8";
+msg.repeat = {
+  pattern: "30 9,19,29,39,49,59 * * * *",
+  tz: "UTC",
+};
+msg.template = {
+  name: "default",
+  data: { payload: "gateway-FCC23DFFFE0AA2A8" },
 };
 return msg;
 ```
 
-When adding a legacy repeat job, the scheduler id is `msg.schedulerId` when present, otherwise `msg.jobopts.jobId`. `repeat.cron` is translated to `repeat.pattern`; conflicting `cron` and `pattern` values are rejected. Lookup and removal commands require the exact scheduler id in `msg.schedulerId`, `msg.jobid`, or `msg.jobId`.
+Lookup and removal commands require the exact id in `msg.schedulerId`.
 
 ## Commands
 
-`bull cmd` reads `msg.cmd`. The legacy `msg.command` alias is also accepted, but new flows should use `msg.cmd`. The default command is `add`.
+`bullmq cmd` reads `msg.cmd`; the default command is `add`.
 
 Core supported command families include:
 
@@ -78,7 +80,7 @@ Core supported command families include:
 - delayed jobs and delay promotion
 - priorities and priority counts
 - deduplication keys
-- Job Scheduler commands and legacy repeat aliases
+- BullMQ v6 Job Scheduler commands
 - pause, resume, drain, clean, and `stopAndRemoveAllJobs`
 - global concurrency and rate limits
 - job logs and Prometheus metrics export
@@ -100,9 +102,9 @@ See [docs/COMMANDS.md](docs/COMMANDS.md).
 
 Import any of these flows into Node-RED:
 
-- [examples/example_flow.json](examples/example_flow.json): an end-to-end flow with add/run, a legacy scheduler compatibility case, delayed and prioritized jobs, manual acknowledgement, QueueEvents, and a parent/child flow.
-- [examples/bullmq_features.json](examples/bullmq_features.json): focused examples of common BullMQ features.
-- [examples/repeatable_jobs.json](examples/repeatable_jobs.json): legacy repeat-command and Job Scheduler compatibility examples.
+- [examples/example_flow.json](examples/example_flow.json): an end-to-end flow with add/run, a Job Scheduler, delayed and prioritized jobs, manual acknowledgement, QueueEvents, and a parent/child flow.
+- [examples/bullmq_features.json](examples/bullmq_features.json): focused examples, including one delayed job, a batch with increasing delays, and a series targeted at exact ISO date-times.
+- [examples/repeatable_jobs.json](examples/repeatable_jobs.json): native BullMQ v6 Job Scheduler examples.
 
 The examples do not contain secrets.
 

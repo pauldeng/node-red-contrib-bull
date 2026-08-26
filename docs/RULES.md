@@ -4,8 +4,8 @@ Hard constraints. Each one exists because breaking it breaks a released contract
 
 ## Public Surface
 
-- Keep the legacy node types registered: `bull-queue-server`, `bull cmd`, and `bull run`. Deployed flows use these names. `bull job`, `bull events`, and `bull flow` are the BullMQ-era additions.
-- `msg.command` stays a working alias for `msg.cmd`.
+- Register only the BullMQ v6 node types: `bullmq-queue-server`, `bullmq cmd`, `bullmq run`, `bullmq job`, `bullmq events`, and `bullmq flow`.
+- Accept only `msg.cmd` for command dispatch and only the native Job Scheduler command names and fields.
 - `msg.cmd` dispatch maps to explicit BullMQ calls only. Never expose arbitrary method names through it.
 - Record unsupported BullMQ behavior with a reason instead of silently omitting it.
 

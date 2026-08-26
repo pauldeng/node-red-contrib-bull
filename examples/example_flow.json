@@ -8,7 +8,7 @@
   },
   {
     "id": "queue-basecasts",
-    "type": "bull-queue-server",
+    "type": "bullmq-queue-server",
     "name": "basecasts",
     "deployment": "single",
     "address": "localhost",
@@ -59,7 +59,7 @@
   },
   {
     "id": "cmd-simple",
-    "type": "bull cmd",
+    "type": "bullmq cmd",
     "z": "flow-basecasts",
     "name": "add simple",
     "queue": "queue-basecasts",
@@ -69,7 +69,7 @@
   },
   {
     "id": "run-immediate",
-    "type": "bull run",
+    "type": "bullmq run",
     "z": "flow-basecasts",
     "name": "run immediate",
     "queue": "queue-basecasts",
@@ -103,8 +103,8 @@
     "id": "fn-required-schedule",
     "type": "function",
     "z": "flow-basecasts",
-    "name": "add required repeat cron",
-    "func": "msg.cmd = \"add\";\nmsg.jobopts = {\n  jobId: msg.payload,\n  removeOnComplete: true,\n  repeat: {\n    cron: \"30 9,19,29,39,49,59 * * * *\"\n  }\n};\nreturn msg;",
+    "name": "upsert job scheduler",
+    "func": "msg.cmd = \"upsertJobScheduler\";\nmsg.schedulerId = msg.payload;\nmsg.repeat = {\n  pattern: \"30 9,19,29,39,49,59 * * * *\",\n  tz: \"UTC\"\n};\nmsg.template = {\n  name: \"default\",\n  data: { payload: msg.payload },\n  opts: { removeOnComplete: true }\n};\nreturn msg;",
     "outputs": 1,
     "noerr": 0,
     "initialize": "",
@@ -116,7 +116,7 @@
   },
   {
     "id": "cmd-required-schedule",
-    "type": "bull cmd",
+    "type": "bullmq cmd",
     "z": "flow-basecasts",
     "name": "upsert scheduler",
     "queue": "queue-basecasts",
@@ -158,7 +158,7 @@
   },
   {
     "id": "cmd-delayed-priority",
-    "type": "bull cmd",
+    "type": "bullmq cmd",
     "z": "flow-basecasts",
     "name": "add delayed priority",
     "queue": "queue-basecasts",
@@ -168,7 +168,7 @@
   },
   {
     "id": "events-basecasts",
-    "type": "bull events",
+    "type": "bullmq events",
     "z": "flow-basecasts",
     "name": "events",
     "queue": "queue-basecasts",
@@ -179,7 +179,7 @@
   },
   {
     "id": "run-manual",
-    "type": "bull run",
+    "type": "bullmq run",
     "z": "flow-basecasts",
     "name": "run manual",
     "queue": "queue-basecasts",
@@ -194,7 +194,7 @@
   },
   {
     "id": "job-complete",
-    "type": "bull job",
+    "type": "bullmq job",
     "z": "flow-basecasts",
     "name": "complete manual job",
     "action": "complete",
@@ -221,7 +221,7 @@
   },
   {
     "id": "flow-producer",
-    "type": "bull flow",
+    "type": "bullmq flow",
     "z": "flow-basecasts",
     "name": "add flow",
     "queue": "queue-basecasts",

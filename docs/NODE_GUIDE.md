@@ -1,6 +1,6 @@
 # Node Guide
 
-## `bull-queue-server`
+## `bullmq-queue-server`
 
 Configures queue name, Redis deployment, credentials, TLS, and BullMQ prefix.
 
@@ -14,18 +14,19 @@ Cluster and MemoryDB prefixes must contain a Redis hash tag; use `{bull}` unless
 
 Optional OpenTelemetry fields `telemetry`, `telemetryServiceName`, and `telemetryMetrics` are off/blank by default; see [docs/TELEMETRY.md](TELEMETRY.md).
 
-## `bull cmd`
+## `bullmq cmd`
 
 Input node for producer and administration commands.
 
 Input:
 
 - `msg.cmd`: command name. Defaults to `add`.
-- `msg.command`: legacy alias for `msg.cmd`; use `msg.cmd` in new flows.
-- `msg.payload`: compatibility payload.
+- `msg.payload`: job data for `add` when `msg.jobData` is not supplied, or command input where documented.
 - `msg.jobData`: full BullMQ job data when supplied.
 - `msg.jobName`: BullMQ job name. Defaults to `default`.
 - `msg.jobopts`: BullMQ job options.
+
+`add` and `addBulk` reject repeat options. Use the native Job Scheduler commands and fields documented in [docs/COMMANDS.md](COMMANDS.md).
 
 Output:
 
@@ -34,7 +35,7 @@ Output:
 
 BullMQ v6 removed the `paused` job state: `getJobState` never returns `"paused"` (a paused queue's jobs report `"waiting"`), and `getJobCounts` no longer has a `paused` key. Use `isPaused` to check the queue itself.
 
-## `bull run`
+## `bullmq run`
 
 Worker node with no input and one output.
 
@@ -47,11 +48,11 @@ Output message:
 Completion modes:
 
 - `immediate`: complete after sending the message.
-- `manual`: wait for downstream `bull job` acknowledgement. Fails the job after the ack timeout; set the timeout to `0` to wait indefinitely.
+- `manual`: wait for downstream `bullmq job` acknowledgement. Fails the job after the ack timeout; set the timeout to `0` to wait indefinitely.
 
 Concurrency must be a positive integer. The optional limiter maximum and duration must either both be blank or both be positive integers.
 
-## `bull job`
+## `bullmq job`
 
 Acts on manual-mode active jobs. Actions can be configured or supplied in `msg.cmd`.
 
@@ -73,11 +74,11 @@ Non-terminal actions:
 Cancellation actions (BullMQ v6 cooperative cancellation):
 
 - `cancelJob`: cancels the active job identified by `msg.bull.ackId`. Reason comes from `msg.reason`, default `"BullMQ job cancelled"`. Outputs `true`. If BullMQ reports the job as no longer cancellable, the node raises an error naming the job id instead of sending a message.
-- `cancelAllJobs`: cancels every active manual-mode job on the `bull run` node that owns `msg.bull.ackId`. Same `msg.reason` default. Always outputs `true`.
+- `cancelAllJobs`: cancels every active manual-mode job on the `bullmq run` node that owns `msg.bull.ackId`. Same `msg.reason` default. Always outputs `true`.
 
-Both actions are acknowledgement-scoped: like every `bull job` action, they act on the job behind `msg.bull.ackId`, so they only work for manual-completion jobs that have not yet settled (completed, failed, or timed out). Cancelling aborts the worker's per-job signal, which fails the pending acknowledgement; BullMQ then applies the queue's normal attempts/backoff retry policy to the job. Cancellation does not itself complete or remove the job.
+Both actions are acknowledgement-scoped: like every `bullmq job` action, they act on the job behind `msg.bull.ackId`, so they only work for manual-completion jobs that have not yet settled (completed, failed, or timed out). Cancelling aborts the worker's per-job signal, which fails the pending acknowledgement; BullMQ then applies the queue's normal attempts/backoff retry policy to the job. Cancellation does not itself complete or remove the job.
 
-## `bull events`
+## `bullmq events`
 
 QueueEvents source node. An empty event filter subscribes to: `active`, `added`, `cleaned`, `completed`, `deduplicated`, `delayed`, `drained`, `duplicated`, `failed`, `paused`, `progress`, `removed`, `resumed`, `retries-exhausted`, `stalled`, `waiting`, and `waiting-children`.
 
@@ -89,7 +90,7 @@ Output:
 - `msg.payload`: BullMQ event payload;
 - `msg.bull`: queue, event, and event id metadata.
 
-## `bull flow`
+## `bullmq flow`
 
 Adds a BullMQ FlowProducer tree.
 

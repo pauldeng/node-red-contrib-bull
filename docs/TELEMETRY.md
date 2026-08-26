@@ -8,7 +8,7 @@ Telemetry is off by default. With the master switch off, the word `telemetry` ne
 
 ## Config Fields
 
-`bull-queue-server` has three telemetry fields:
+`bullmq-queue-server` has three telemetry fields:
 
 - `telemetry` (boolean, default `false`): master switch.
 - `telemetryServiceName` (string, default `""`): used as both the tracer name and the meter name; falls back to the queue name when blank.
@@ -42,9 +42,9 @@ BullMQ emits:
 - Histogram `bullmq.job.duration` (milliseconds), recorded alongside the counter above whenever the job has a `processedOn` timestamp. Same attributes.
 - Gauge `bullmq.queue.jobs`, the job count per state. Attributes: `bullmq.queue.name`, `bullmq.queue.jobs.state`. BullMQ only records this gauge when something calls `queue.recordJobCountsMetric()`; this package does not call it on a timer, so the gauge stays empty unless a host script invokes that method directly.
 
-## `bull events` Is Not Traced
+## `bullmq events` Is Not Traced
 
-BullMQ 6.2.1 types `QueueEventsOptions` as `Omit<QueueBaseOptions, 'telemetry'>`. `QueueEvents` accepts no telemetry client at all, so `bull events` never emits spans or metrics regardless of the config-node toggles.
+BullMQ 6.2.1 types `QueueEventsOptions` as `Omit<QueueBaseOptions, 'telemetry'>`. `QueueEvents` accepts no telemetry client at all, so `bullmq events` never emits spans or metrics regardless of the config-node toggles.
 
 ## Zero-Dependency Alternative
 

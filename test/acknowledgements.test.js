@@ -232,7 +232,7 @@ test("a completion that lands before a late abort wins the race", async () => {
   assert.equal(await waiter, "done-first");
 });
 
-// --- "bull job" cancelJob / cancelAllJobs, wired through bull-queue.js -----
+// --- "bullmq job" cancelJob / cancelAllJobs, wired through bull-queue.js -----
 
 class FakeWorker {
   constructor() {
@@ -290,8 +290,8 @@ function createRED(getQueueConfig) {
   };
 }
 
-// Builds one "bull run" (manual mode, backed by a FakeWorker) and one
-// "bull job" node sharing the same acknowledgement registry that
+// Builds one "bullmq run" (manual mode, backed by a FakeWorker) and one
+// "bullmq job" node sharing the same acknowledgement registry that
 // registerBullMQNodes(RED) closes over -- exactly how a real flow wires them.
 function setupCancelHarness() {
   const worker = new FakeWorker();
@@ -313,7 +313,7 @@ function setupCancelHarness() {
   registerBullMQNodes(RED);
 
   const runNode = {};
-  RED.registered.get("bull run").constructor.call(runNode, {
+  RED.registered.get("bullmq run").constructor.call(runNode, {
     queue: "queue",
     completionMode: "manual",
     ackTimeout: 0, // disable the ack timeout; tests settle explicitly
@@ -322,7 +322,7 @@ function setupCancelHarness() {
   runNode.send = (msg) => sent.push(msg);
 
   const jobNode = {};
-  RED.registered.get("bull job").constructor.call(jobNode, {});
+  RED.registered.get("bullmq job").constructor.call(jobNode, {});
 
   // Simulates BullMQ invoking the processor for a manual-mode job, tracking
   // its AbortController on the FakeWorker the same way bullmq's LockManager
@@ -353,7 +353,7 @@ function setupCancelHarness() {
   return { processor, worker, runJob, dispatch };
 }
 
-test("the bull run processor declares arity 3 so BullMQ tracks a cancellable AbortController", () => {
+test("the bullmq run processor declares arity 3 so BullMQ tracks a cancellable AbortController", () => {
   const { processor } = setupCancelHarness();
   assert.equal(
     processor.length,
