@@ -19,8 +19,9 @@ The runtime does Node-RED lifecycle work only: creating nodes, wiring input hand
 
 `bullmq-queue-server` owns queue name and Redis deployment config. It creates role-specific ioredis connections:
 
-- producer connections fail quickly with bounded retries;
-- worker and event connections use `maxRetriesPerRequest: null`;
+- producer connections fail fast through `skipWaitingForReady: true` on the BullMQ owner plus `maxRetriesPerRequest: 1` on the socket. Without the first, BullMQ awaits a connection-ready promise that never settles while Redis is unreachable, so a `bullmq cmd` command hangs instead of erroring and the node never calls `done()`. The offline queue is deliberately left enabled so messages emitted during the brief connection window after a deploy are buffered;
+- worker and event connections use `maxRetriesPerRequest: null` and keep the offline queue, because a consumer should wait for the connection to come back rather than fail;
+- every role reconnects with exponential backoff between 1s and 20s, including Cluster and Sentinel discovery retries;
 - QueueEvents uses a dedicated connection;
 - Cluster and MemoryDB use `{bull}` by default as the BullMQ prefix.
 
@@ -30,9 +31,16 @@ Connection and resource errors are reported on the consuming runtime node's stat
 
 Secrets are read only from Node-RED credentials.
 
+Queue retention defaults are attached directly to `Queue`. `bullmq flow` builds BullMQ `queuesOptions` for every queue name in its tree so the same defaults also reach `FlowProducer`, while preserving per-queue and per-job overrides.
+
 ## Shutdown
 
-Closing an owner/connection pair (`bull-queue.js`) uses one `CLOSE_GRACE_MS` (1 second) budget:
+Closing an owner/connection pair (`bull-queue.js`) uses one of two budgets, chosen from the tracked connection's state:
+
+- `GRACEFUL_CLOSE_MS` (10 seconds) when the connection is `ready`. `Worker.close()` waits for in-flight jobs, and cutting that off abandons a running job to the stalled checker, which re-runs it and can eventually fail it for exceeding `maxStalledCount`. The ceiling stays under Node-RED's own node close timeout, and pairs close concurrently, so it bounds one resource rather than the sum.
+- `CLOSE_GRACE_MS` (1 second) otherwise, so an unreachable Redis never blocks shutdown or redeploy.
+
+Within that budget:
 
 1. The BullMQ owner's own graceful close (`Queue.close()` / `Worker.close()` / `QueueEvents.close()` / `FlowProducer.close()`). This alone succeeds whenever Redis is reachable.
 2. If graceful close times out, force-disconnect the backend's raw ioredis clients and stop Worker lock-renewal/stalled-check timers.

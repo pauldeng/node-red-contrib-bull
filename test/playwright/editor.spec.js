@@ -191,3 +191,63 @@ test("telemetry fields toggle their rows and persist across dialog close and reo
 
   await page.locator("#node-config-dialog-cancel").click();
 });
+
+test("auto-removal fields are prefilled with bounded defaults and persist", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.waitForFunction(() => {
+    const loader = document.querySelector("#red-ui-loading-progress");
+    return (
+      window.RED &&
+      RED.nodes.getType("bullmq-queue-server") &&
+      RED.workspaces.active() &&
+      loader &&
+      getComputedStyle(loader).display === "none"
+    );
+  });
+
+  await page.evaluate(() => {
+    RED.editor.editConfig("", "bullmq-queue-server", "_ADD_");
+  });
+
+  // A new queue must arrive bounded: blank fields keep every job forever.
+  await expect(page.locator("#node-config-input-removeOnComplete")).toHaveValue(
+    "1000",
+  );
+  await expect(page.locator("#node-config-input-removeOnFail")).toHaveValue(
+    "5000",
+  );
+
+  await page.locator("#node-config-input-removeOnComplete").fill("-1");
+  await expect(page.locator("#node-config-input-removeOnComplete")).toHaveClass(
+    /input-error/,
+  );
+  await page.locator("#node-config-input-removeOnComplete").fill("1.5");
+  await expect(page.locator("#node-config-input-removeOnComplete")).toHaveClass(
+    /input-error/,
+  );
+
+  await page.locator("#node-config-input-name").fill("retention-queue");
+  await page.locator("#node-config-input-removeOnComplete").fill("25");
+  await page.locator("#node-config-input-removeOnFail").fill("");
+  await page.locator("#node-config-dialog-ok").click();
+  await expect(page.locator("#node-config-dialog-ok")).toHaveCount(0);
+
+  const stored = await page.evaluate(() => {
+    let found = null;
+    RED.nodes.eachConfig((config) => {
+      if (
+        config.type === "bullmq-queue-server" &&
+        config.name === "retention-queue"
+      ) {
+        found = {
+          complete: config.removeOnComplete,
+          fail: config.removeOnFail,
+        };
+      }
+    });
+    return found;
+  });
+  expect(stored).toEqual({ complete: "25", fail: "" });
+});

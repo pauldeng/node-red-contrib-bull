@@ -49,6 +49,24 @@ const DEFAULT_EVENTS = [
 // an unreachable Redis server.
 const CLOSE_GRACE_MS = 1000;
 
+// A connection that is actually ready gets a longer budget: Worker.close()
+// waits for in-flight jobs, and cutting that off abandons a running job to the
+// stalled checker, which re-runs it and can eventually fail it for exceeding
+// maxStalledCount. The ceiling stays well under Node-RED's own ~15s node close
+// timeout, and resources close concurrently, so this bounds one resource, not
+// the sum.
+const GRACEFUL_CLOSE_MS = 10000;
+
+// Shared producer connection listener budget: every bullmq cmd node adds
+// ready/error/close listeners to it, and BullMQ adds its own on top.
+const PRODUCER_MAX_LISTENERS = 1000;
+
+function closeBudgetFor(connection) {
+  return connection && connection.status === "ready"
+    ? GRACEFUL_CLOSE_MS
+    : CLOSE_GRACE_MS;
+}
+
 async function settled(promise) {
   try {
     await promise;
@@ -58,13 +76,16 @@ async function settled(promise) {
   return "settled";
 }
 
-async function timedOut(ms) {
-  await sleep(ms);
-  return "timeout";
-}
-
 async function settleWithin(promise, ms) {
-  return await Promise.race([settled(promise), timedOut(ms)]);
+  const controller = new AbortController();
+  try {
+    return await Promise.race([
+      settled(promise),
+      sleep(ms, "timeout", { signal: controller.signal }),
+    ]);
+  } finally {
+    controller.abort();
+  }
 }
 
 function disconnectClient(client) {
@@ -117,7 +138,7 @@ async function forceDisconnect(resource) {
   }
 }
 
-async function closeResource(resource) {
+async function closeResource(resource, connection) {
   if (!resource) {
     return;
   }
@@ -139,7 +160,10 @@ async function closeResource(resource) {
   // BullMQ resource: QueueEvents.close() blocks forever on a connection that
   // never became ready, so cap the graceful close and force-disconnect when
   // it does not settle in time (see forceDisconnect for the fallback chain).
-  if ((await settleWithin(resource.close(), CLOSE_GRACE_MS)) === "timeout") {
+  if (
+    (await settleWithin(resource.close(), closeBudgetFor(connection))) ===
+    "timeout"
+  ) {
     await forceDisconnect(resource);
   }
 }
@@ -147,7 +171,7 @@ async function closeResource(resource) {
 async function closeResourcePair(owner, connection) {
   let firstError;
   try {
-    await closeResource(owner);
+    await closeResource(owner, connection);
   } catch (err) {
     firstError = err;
   }
@@ -171,6 +195,42 @@ function nodeDone(node, done, err, msg) {
   } else if (err) {
     node.error(err, msg);
   }
+}
+
+function withFlowJobDefaults(flow, flowOptions, defaultJobOptions) {
+  if (!defaultJobOptions) {
+    return flowOptions;
+  }
+
+  const options =
+    flowOptions && typeof flowOptions === "object" ? flowOptions : {};
+  let queuesOptions = { ...options.queuesOptions };
+  const pending = [flow];
+
+  while (pending.length > 0) {
+    const job = pending.pop();
+    if (!job || typeof job !== "object") {
+      continue;
+    }
+    if (typeof job.queueName === "string" && job.queueName) {
+      const queueOptions = queuesOptions[job.queueName] || {};
+      queuesOptions = {
+        ...queuesOptions,
+        [job.queueName]: {
+          ...queueOptions,
+          defaultJobOptions: {
+            ...defaultJobOptions,
+            ...queueOptions.defaultJobOptions,
+          },
+        },
+      };
+    }
+    if (Array.isArray(job.children)) {
+      pending.push(...job.children);
+    }
+  }
+
+  return { ...options, queuesOptions };
 }
 
 function isPresent(value) {
@@ -323,15 +383,25 @@ module.exports = function registerBullMQNodes(RED) {
     node.getQueue = function getQueue() {
       if (!node.queue) {
         node.producerConnection = node.createConnection("producer");
-        node.producerConnection.setMaxListeners(0);
-        node.queue = new Queue(
-          node.config.queueName,
-          buildBullMQOptions(
-            node.config,
-            node.producerConnection,
-            node.getTelemetry(),
-          )
+        // A generous finite limit, deliberately not 0. Node treats 0 as
+        // unlimited, but BullMQ's increaseMaxListeners() does
+        // getMaxListeners() + n, so 0 becomes a hard cap of 3 and every
+        // bullmq cmd node sharing this connection then trips a
+        // MaxListenersExceededWarning.
+        node.producerConnection.setMaxListeners(PRODUCER_MAX_LISTENERS);
+        const queueOptions = buildBullMQOptions(
+          node.config,
+          node.producerConnection,
+          node.getTelemetry(),
+          "producer",
         );
+        // Queue-level auto-removal. Without it BullMQ keeps every completed and
+        // failed job forever, which is the unbounded growth its production
+        // guide warns about. Per-job msg.jobopts still wins.
+        if (node.config.defaultJobOptions) {
+          queueOptions.defaultJobOptions = node.config.defaultJobOptions;
+        }
+        node.queue = new Queue(node.config.queueName, queueOptions);
         node.resources.set(node.queue, node.producerConnection);
         attachErrorListener(node.queue, node);
       }
@@ -351,7 +421,12 @@ module.exports = function registerBullMQNodes(RED) {
     node.createWorker = function createWorker(processor, options, owner = node) {
       const connection = node.createConnection("worker", owner);
       const worker = new Worker(node.config.queueName, processor, {
-        ...buildBullMQOptions(node.config, connection, node.getTelemetry()),
+        ...buildBullMQOptions(
+          node.config,
+          connection,
+          node.getTelemetry(),
+          "worker",
+        ),
         ...options,
       });
       node.resources.set(worker, connection);
@@ -362,7 +437,7 @@ module.exports = function registerBullMQNodes(RED) {
       const connection = node.createConnection("events", owner);
       const queueEvents = new QueueEvents(
         node.config.queueName,
-        buildBullMQOptions(node.config, connection)
+        buildBullMQOptions(node.config, connection, undefined, "events")
       );
       node.resources.set(queueEvents, connection);
       return queueEvents;
@@ -371,7 +446,12 @@ module.exports = function registerBullMQNodes(RED) {
     node.createFlowProducer = function createFlowProducer(owner = node) {
       const connection = node.createConnection("producer", owner);
       const flowProducer = new FlowProducer(
-        buildBullMQOptions(node.config, connection, node.getTelemetry())
+        buildBullMQOptions(
+          node.config,
+          connection,
+          node.getTelemetry(),
+          "producer",
+        )
       );
       node.resources.set(flowProducer, connection);
       return flowProducer;
@@ -725,7 +805,14 @@ module.exports = function registerBullMQNodes(RED) {
           throw new Error("bullmq flow requires msg.payload to contain a flow tree");
         }
         msg.payload = serializeFlowJob(
-          await node.flowProducer.add(msg.payload, msg.flowopts)
+          await node.flowProducer.add(
+            msg.payload,
+            withFlowJobDefaults(
+              msg.payload,
+              msg.flowopts,
+              node.bullConn.config.defaultJobOptions,
+            ),
+          )
         );
         nodeSend(node, send, msg);
         nodeDone(node, done);

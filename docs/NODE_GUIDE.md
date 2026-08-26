@@ -12,6 +12,10 @@ Deployment modes:
 
 Cluster and MemoryDB prefixes must contain a Redis hash tag; use `{bull}` unless you have a tested custom hash tag.
 
+`removeOnComplete` and `removeOnFail` set queue-level auto-removal as BullMQ `defaultJobOptions`, keeping that many of the newest jobs in each state. New config nodes default to keeping 1000 completed and 5000 failed jobs. A blank field keeps every job, which is BullMQ's own default and grows Redis without bound.
+
+For `bullmq cmd`, `msg.jobopts` overrides these defaults. For `bullmq flow`, the defaults apply to every queue named in the flow tree; `msg.flowopts.queuesOptions[queueName].defaultJobOptions` overrides the config for one queue, and the job's own `opts` has final precedence.
+
 Optional OpenTelemetry fields `telemetry`, `telemetryServiceName`, and `telemetryMetrics` are off/blank by default; see [docs/TELEMETRY.md](TELEMETRY.md).
 
 ## `bullmq cmd`

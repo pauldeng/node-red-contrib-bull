@@ -35,7 +35,9 @@ It starts a temporary local `redis-server`, loads real Node-RED flows, and verif
 - priority listing and counts;
 - global rate-limit commands;
 - deduplication commands and `bullmq events` delivery;
-- `bullmq flow` parent/child FlowProducer output.
+- `bullmq flow` parent/child FlowProducer output;
+- worker and producer recovery after Redis restarts;
+- graceful Node-RED shutdown while a manual job is active.
 
 ## Playwright
 

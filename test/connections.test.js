@@ -1,9 +1,14 @@
 const assert = require("node:assert/strict");
+const net = require("node:net");
 const test = require("node:test");
+
+const { Queue } = require("bullmq");
+const IORedis = require("ioredis");
 
 const {
   buildBullMQOptions,
   buildRedisDescriptor,
+  createRedisConnection,
   normalizeQueueConfig,
   parseEndpointList,
 } = require("../lib/connections");
@@ -267,5 +272,136 @@ test("rejects endpoint URL schemes that contradict topology TLS", () => {
         sentinelTls: false,
       }),
     /rediss:\/\/.*Sentinel TLS.*enabled/i,
+  );
+});
+
+test("producer connections fail fast instead of queueing commands while Redis is unreachable", () => {
+  const config = normalizeQueueConfig({ name: "prod" }, {});
+
+  // A producer must reject promptly: a bullmq cmd node awaits the command, so a
+  // queued-forever command means done() never fires and the message is lost.
+  const producerOptions = buildBullMQOptions(config, {}, undefined, "producer");
+  assert.equal(producerOptions.skipWaitingForReady, true);
+
+  // But NOT by disabling the offline queue, even though BullMQ's guide
+  // suggests it for producers: measured against a healthy Redis that rejects
+  // any command issued during the connect window, which is every deploy-time
+  // message in Node-RED. maxRetriesPerRequest is what bounds a dead Redis.
+  for (const role of ["producer", "worker", "events"]) {
+    const descriptor = buildRedisDescriptor(config, role);
+    assert.notEqual(descriptor.options.enableOfflineQueue, false, role);
+  }
+  assert.equal(
+    buildRedisDescriptor(config, "producer").options.maxRetriesPerRequest,
+    1,
+  );
+
+  // Consumers must keep waiting for the connection to come back instead.
+  for (const role of ["worker", "events"]) {
+    const options = buildBullMQOptions(config, {}, undefined, role);
+    assert.equal(Object.hasOwn(options, "skipWaitingForReady"), false);
+  }
+});
+
+test("reconnect backoff uses the BullMQ production range for every role", () => {
+  const config = normalizeQueueConfig({ name: "prod" }, {});
+
+  for (const role of ["producer", "worker", "events"]) {
+    const { options } = buildRedisDescriptor(config, role);
+    assert.equal(typeof options.retryStrategy, "function", role);
+    assert.equal(options.retryStrategy(1), 1000, role);
+    assert.equal(options.retryStrategy(2), 2000, role);
+    assert.equal(options.retryStrategy(50), 20000, role);
+  }
+
+  const cluster = buildRedisDescriptor(
+    normalizeQueueConfig(
+      { name: "prod", deployment: "cluster", clusterNodes: "node-a:6379" },
+      {},
+    ),
+    "producer",
+  );
+  assert.equal(typeof cluster.options.redisOptions.retryStrategy, "function");
+  assert.equal(typeof cluster.options.clusterRetryStrategy, "function");
+  assert.equal(cluster.options.clusterRetryStrategy(1), 1000);
+  assert.equal(cluster.options.clusterRetryStrategy(50), 20000);
+
+  const sentinel = buildRedisDescriptor(
+    normalizeQueueConfig({
+      name: "prod",
+      deployment: "sentinel",
+      sentinels: "sentinel-a:26379",
+      sentinelMasterName: "mymaster",
+    }),
+    "producer",
+  );
+  assert.equal(typeof sentinel.options.sentinelRetryStrategy, "function");
+  assert.equal(sentinel.options.sentinelRetryStrategy(1), 1000);
+  assert.equal(sentinel.options.sentinelRetryStrategy(50), 20000);
+});
+
+test(
+  "a real producer command rejects promptly when Redis is unavailable",
+  { timeout: 3000 },
+  async () => {
+    const server = net.createServer((socket) => socket.destroy());
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+
+    const port = server.address().port;
+    const config = normalizeQueueConfig({
+      name: "unavailable",
+      address: "127.0.0.1",
+      port,
+    });
+    const connection = createRedisConnection(
+      buildRedisDescriptor(config, "producer"),
+      IORedis,
+    );
+    connection.on("error", () => {});
+    const queue = new Queue(
+      config.queueName,
+      buildBullMQOptions(config, connection, undefined, "producer"),
+    );
+    queue.on("error", () => {});
+
+    try {
+      await assert.rejects(
+        queue.add("probe", {}),
+        /Reached the max retries per request limit/,
+      );
+    } finally {
+      connection.disconnect(false);
+      await new Promise((resolve) => server.close(resolve));
+    }
+  },
+);
+
+test("queue-level auto-removal normalizes into BullMQ defaultJobOptions", () => {
+  const bounded = normalizeQueueConfig(
+    { name: "q", removeOnComplete: "100", removeOnFail: "500" },
+    {},
+  );
+  assert.deepEqual(bounded.defaultJobOptions, {
+    removeOnComplete: 100,
+    removeOnFail: 500,
+  });
+
+  // Blank means "keep every job", which is BullMQ's own default and unbounded.
+  const unbounded = normalizeQueueConfig(
+    { name: "q", removeOnComplete: "", removeOnFail: "" },
+    {},
+  );
+  assert.equal(unbounded.defaultJobOptions, undefined);
+
+  assert.throws(
+    () => normalizeQueueConfig({ name: "q", removeOnComplete: "-1" }, {}),
+    /removeOnComplete/,
+  );
+  assert.throws(
+    () => normalizeQueueConfig({ name: "q", removeOnFail: "not-a-number" }, {}),
+    /removeOnFail/,
   );
 });

@@ -26,7 +26,10 @@ Repository: <https://github.com/pauldeng/node-red-contrib-bullmq>
 - Node-RED 5.x
 - Node.js 22.9+
 - Redis with `maxmemory-policy=noeviction`
+- Durable Redis persistence; for self-managed Redis, BullMQ recommends Append Only File (AOF) persistence
 - BullMQ 6.2.1
+
+BullMQ stores job data in clear text. Do not put secrets or other sensitive data in a job payload unless the sensitive fields are encrypted before the job is added.
 
 Bull v4 Redis data is not automatically migrated. Drain, retire, or otherwise handle old Bull queues before upgrading the runtime dependency. Upgrading from a BullMQ v5 release of this package has its own steps; see [docs/MIGRATION.md](docs/MIGRATION.md).
 

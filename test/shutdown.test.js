@@ -495,3 +495,44 @@ test("bullmq run reports a uniform disconnected status when Redis is unreachable
     }
   }
 });
+
+test("config close lets a healthy connection finish a slow graceful close", async () => {
+  const RED = createRED();
+  registerBullMQNodes(RED);
+  const server = buildServerNode(RED);
+
+  // Worker.close() waits for in-flight jobs. Cutting that off after the
+  // unreachable-Redis grace period would abandon a running job to the stalled
+  // checker, so a connection that is actually ready gets a longer budget.
+  const events = [];
+  const owner = {
+    async close() {
+      // Comfortably past CLOSE_GRACE_MS, so the fast cap would cut it off.
+      await delay(1400);
+      events.push("closed");
+    },
+    async disconnect() {
+      events.push("disconnect");
+    },
+    getBackend() {
+      events.push("getBackend");
+      return {};
+    },
+  };
+  const connection = { status: "ready", async close() {} };
+  server.resources = new Map([[owner, connection]]);
+
+  try {
+    // Deliberately not CLOSE_DEADLINE_MS: the whole point is that a graceful
+    // close is allowed to run past the unreachable-Redis cap.
+    const result = await settleWithin(invokeClose(server), 4000);
+    assert.equal(result, "closed", "close must still settle");
+    assert.deepEqual(
+      events,
+      ["closed"],
+      "a ready connection must be allowed to close gracefully, not force-disconnected",
+    );
+  } finally {
+    forceCleanup(server);
+  }
+});

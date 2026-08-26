@@ -8,6 +8,7 @@ const { setTimeout: sleep } = require("node:timers/promises");
 const test = require("node:test");
 const vm = require("node:vm");
 
+const { Queue } = require("bullmq");
 const Redis = require("ioredis");
 const helper = require("node-red-node-test-helper");
 const bullNodes = require("../bull-queue");
@@ -71,8 +72,7 @@ async function waitForRedis(port) {
   throw new Error(`Timed out waiting for redis-server: ${lastError.message}`);
 }
 
-async function startRedis() {
-  const port = 16400 + Math.floor(Math.random() * 1000);
+async function startRedis(port = 16400 + Math.floor(Math.random() * 1000)) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bullmq-redis-"));
   const child = spawn(
     "redis-server",
@@ -97,8 +97,12 @@ async function startRedis() {
 
   return {
     port,
-    stop() {
-      child.kill("SIGTERM");
+    async stop() {
+      if (child.exitCode === null) {
+        const closed = once(child, "close");
+        child.kill("SIGTERM");
+        await closed;
+      }
       fs.rmSync(dir, { recursive: true, force: true });
     },
   };
@@ -245,7 +249,7 @@ test(
       assert.equal((await removeOutput).payload, true);
     } finally {
       await stopHelper(userDir);
-      redis.stop();
+      await redis.stop();
     }
   },
 );
@@ -322,7 +326,7 @@ test(
       assert.equal((await completeOutput).payload, "manual ack payload");
     } finally {
       await stopHelper(userDir);
-      redis.stop();
+      await redis.stop();
     }
   },
 );
@@ -436,7 +440,7 @@ test(
       assert.equal(finalCount.payload, 0);
     } finally {
       await stopHelper(userDir);
-      redis.stop();
+      await redis.stop();
     }
   },
 );
@@ -543,7 +547,7 @@ test(
       );
     } finally {
       await stopHelper(userDir);
-      redis.stop();
+      await redis.stop();
     }
   },
 );
@@ -634,7 +638,7 @@ test(
       assert.equal(removed.payload, 1);
     } finally {
       await stopHelper(userDir);
-      redis.stop();
+      await redis.stop();
     }
   },
 );
@@ -649,7 +653,11 @@ test(
     try {
       const flow = [
         { id: "tab", type: "tab", label: "flow producer" },
-        queueConfig("queue", "flowcasts", redis),
+        {
+          ...queueConfig("queue", "flowcasts", redis),
+          removeOnComplete: "100",
+          removeOnFail: "500",
+        },
         {
           id: "flow",
           type: "bullmq flow",
@@ -678,19 +686,31 @@ test(
               name: "child",
               queueName: "flowcasts",
               data: { payload: "child payload" },
+              opts: { removeOnFail: false },
             },
           ],
+        },
+        flowopts: {
+          queuesOptions: {
+            flowcasts: {
+              defaultJobOptions: { removeOnComplete: 25 },
+            },
+          },
         },
       });
 
       const msg = await result;
       assert.equal(msg.payload.job.name, "parent");
       assert.equal(msg.payload.job.queueName, "flowcasts");
+      assert.equal(msg.payload.job.opts.removeOnComplete, 25);
+      assert.equal(msg.payload.job.opts.removeOnFail, 500);
       assert.equal(msg.payload.children[0].job.name, "child");
       assert.equal(msg.payload.children[0].job.queueName, "flowcasts");
+      assert.equal(msg.payload.children[0].job.opts.removeOnComplete, 25);
+      assert.equal(msg.payload.children[0].job.opts.removeOnFail, false);
     } finally {
       await stopHelper(userDir);
-      redis.stop();
+      await redis.stop();
     }
   },
 );
@@ -794,7 +814,7 @@ test(
       assert.match(failed.payload.failedReason, /BullMQ job cancelled/);
     } finally {
       await stopHelper(userDir);
-      redis.stop();
+      await redis.stop();
     }
   },
 );
@@ -873,7 +893,157 @@ test(
       assert.equal(await queue.getFailedCount(), 2);
     } finally {
       await stopHelper(userDir);
-      redis.stop();
+      await redis.stop();
+    }
+  },
+);
+
+test(
+  "worker and producer recover after Redis restarts",
+  { skip: !enabled, timeout: 30000 },
+  async () => {
+    let redis = await startRedis();
+    const userDir = await startHelper();
+
+    try {
+      const flow = [
+        { id: "tab", type: "tab", label: "reconnect" },
+        queueConfig("queue", "reconnectcasts", redis),
+        {
+          id: "cmd",
+          type: "bullmq cmd",
+          z: "tab",
+          queue: "queue",
+          wires: [["cmd-out"]],
+        },
+        { id: "cmd-out", type: "helper", z: "tab", wires: [] },
+        {
+          id: "run",
+          type: "bullmq run",
+          z: "tab",
+          queue: "queue",
+          completionMode: "immediate",
+          concurrency: 1,
+          wires: [["run-out"]],
+        },
+        { id: "run-out", type: "helper", z: "tab", wires: [] },
+      ];
+
+      await helper.load(bullNodes, flow);
+      const cmd = helper.getNode("cmd");
+      const cmdOut = helper.getNode("cmd-out");
+      const run = helper.getNode("run");
+      const runOut = helper.getNode("run-out");
+
+      const firstAdded = waitForInput(cmdOut);
+      const firstRun = waitForInput(runOut);
+      cmd.receive({
+        cmd: "add",
+        payload: "before restart",
+        jobopts: { removeOnComplete: true },
+      });
+      await firstAdded;
+      assert.equal((await firstRun).payload, "before restart");
+
+      const configNode = helper.getNode("queue");
+      const producerConnection = configNode.getProducerConnection();
+      const workerConnection = configNode.resources.get(run.worker);
+      const producerClosed = once(producerConnection, "close", {
+        signal: AbortSignal.timeout(5000),
+      });
+      const workerClosed = once(workerConnection, "close", {
+        signal: AbortSignal.timeout(5000),
+      });
+      const port = redis.port;
+      await redis.stop();
+      await Promise.all([producerClosed, workerClosed]);
+
+      const producerReady = once(producerConnection, "ready", {
+        signal: AbortSignal.timeout(15000),
+      });
+      const workerReady = once(workerConnection, "ready", {
+        signal: AbortSignal.timeout(15000),
+      });
+      redis = await startRedis(port);
+      await Promise.all([producerReady, workerReady]);
+
+      const secondAdded = waitForInput(cmdOut);
+      const secondRun = waitForInput(runOut);
+      cmd.receive({
+        cmd: "add",
+        payload: "after restart",
+        jobopts: { removeOnComplete: true },
+      });
+      await secondAdded;
+      assert.equal((await secondRun).payload, "after restart");
+    } finally {
+      await stopHelper(userDir);
+      await redis.stop();
+    }
+  },
+);
+
+test(
+  "closing Node-RED with an active manual job finalizes it as failed",
+  { skip: !enabled, timeout: 30000 },
+  async () => {
+    const redis = await startRedis();
+    const userDir = await startHelper();
+    const queueName = "shutdowncasts";
+    const inspector = new Queue(queueName, {
+      connection: { host: "127.0.0.1", port: redis.port },
+    });
+    inspector.on("error", () => {});
+
+    try {
+      const flow = [
+        { id: "tab", type: "tab", label: "active shutdown" },
+        queueConfig("queue", queueName, redis),
+        {
+          id: "cmd",
+          type: "bullmq cmd",
+          z: "tab",
+          queue: "queue",
+          wires: [["cmd-out"]],
+        },
+        { id: "cmd-out", type: "helper", z: "tab", wires: [] },
+        {
+          id: "run",
+          type: "bullmq run",
+          z: "tab",
+          queue: "queue",
+          completionMode: "manual",
+          ackTimeout: 300000,
+          concurrency: 1,
+          wires: [["active-out"]],
+        },
+        { id: "active-out", type: "helper", z: "tab", wires: [] },
+      ];
+
+      await inspector.waitUntilReady();
+      await helper.load(bullNodes, flow);
+      const added = waitForInput(helper.getNode("cmd-out"));
+      const active = waitForInput(helper.getNode("active-out"));
+      helper.getNode("cmd").receive({
+        cmd: "add",
+        payload: "still active",
+        jobopts: { removeOnFail: false },
+      });
+      const jobId = (await added).payload.id;
+      await active;
+
+      await helper.unload();
+
+      const job = await inspector.getJob(jobId);
+      assert.equal(await job.getState(), "failed");
+      assert.match(
+        job.failedReason,
+        /BullMQ run node closed before acknowledgement/,
+      );
+    } finally {
+      await inspector.close();
+      await stopHelper(userDir);
+      await redis.stop();
     }
   },
 );

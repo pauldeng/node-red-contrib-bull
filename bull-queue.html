@@ -87,6 +87,14 @@
     <input type="text" id="node-config-input-prefix" placeholder="{bull}">
   </div>
   <div class="form-row">
+    <label for="node-config-input-removeOnComplete"><i class="fa fa-trash"></i> Completed</label>
+    <input type="number" id="node-config-input-removeOnComplete" min="0" step="1" placeholder="1000">
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-removeOnFail"><i class="fa fa-trash-o"></i> Failed</label>
+    <input type="number" id="node-config-input-removeOnFail" min="0" step="1" placeholder="5000">
+  </div>
+  <div class="form-row">
     <label for="node-config-input-telemetry"><i class="fa fa-line-chart"></i> Telemetry</label>
     <input type="checkbox" id="node-config-input-telemetry" style="display:inline-block; width:auto; vertical-align:top;">
     <span>Enable OpenTelemetry tracing via bullmq-otel</span>
@@ -104,6 +112,10 @@
 
 <script type="text/javascript">
   (function() {
+    function validateKeepCount(value) {
+      return value === "" || /^\d+$/.test(value);
+    }
+
     function updateBullQueueServerRows() {
       var deployment = $("#node-config-input-deployment").val() || "single";
       $(".bull-single-row").toggle(deployment === "single");
@@ -132,6 +144,8 @@
         tlsRejectUnauthorized: { value: true },
         tlsServerName: { value: "" },
         prefix: { value: "" },
+        removeOnComplete: { value: "1000", validate: validateKeepCount },
+        removeOnFail: { value: "5000", validate: validateKeepCount },
         telemetry: { value: false },
         telemetryServiceName: { value: "" },
         telemetryMetrics: { value: false }
@@ -182,6 +196,7 @@
     <li><b>Client Cert</b>: PEM client certificate for mutual TLS deployments. Stored as a Node-RED credential.</li>
     <li><b>Client Key</b>: PEM client private key for mutual TLS deployments. Stored as a Node-RED credential.</li>
     <li><b>Prefix</b>: BullMQ key prefix. Redis Cluster and MemoryDB prefixes must contain a hash tag such as <code>{bull}</code> so BullMQ keys stay in one hash slot for atomic operations.</li>
+    <li><b>Keep Completed</b> / <b>Keep Failed</b>: Queue-level auto-removal, applied as BullMQ <code>defaultJobOptions</code>. Each keeps that many of the newest jobs in the state and removes older ones. Leaving a field blank keeps every job, which is BullMQ's own default and grows Redis without bound, so blank is only appropriate when something else prunes the queue. <code>msg.jobopts</code> overrides these defaults for <code>bullmq cmd</code>. For <code>bullmq flow</code>, per-queue <code>msg.flowopts.queuesOptions</code> defaults and then each job's <code>opts</code> take precedence.</li>
     <li><b>Telemetry</b>: Enables OpenTelemetry tracing for this queue's <code>Queue</code>, <code>Worker</code>, and <code>FlowProducer</code> instances using <a href="https://www.npmjs.com/package/bullmq-otel" target="_blank" rel="noopener noreferrer">bullmq-otel</a>. Off by default. <code>bullmq-otel</code> is an optional dependency and must be installed separately (<code>npm install bullmq-otel</code>) before enabling this switch. This node does not start or configure an OpenTelemetry SDK or exporter; the host Node-RED process owns that (for example NODE_OPTIONS auto-instrumentation, or an SDK bootstrapped from Node-RED's <code>settings.js</code>). When no OpenTelemetry provider is registered, <code>bullmq-otel</code> simply no-ops rather than erroring.</li>
     <li><b>Service Name</b>: Tracer and meter name reported to OpenTelemetry. Leave blank to use the <b>Queue</b> name.</li>
     <li><b>Metrics</b>: Enables OpenTelemetry metrics in addition to tracing. A <code>MeterProvider</code> must be registered with the host process before this queue is first used, otherwise metrics are dropped. For metrics scraping without any OpenTelemetry stack, the <code>bullmq cmd</code> node's <code>msg.cmd</code> <code>exportPrometheusMetrics</code> is a zero-dependency alternative.</li>
@@ -190,7 +205,7 @@
   <h3>Example</h3>
   <p>For local Redis, set <b>Queue</b> to <code>email-jobs</code>, <b>Deployment</b> to <code>Standalone Redis</code>, <b>Host</b> to <code>localhost</code>, and <b>Port</b> to <code>6379</code>.</p>
   <p>For AWS MemoryDB, set <b>Deployment</b> to <code>Redis Cluster / AWS MemoryDB</code>, enter the cluster endpoint in <b>Cluster Nodes</b>, enable <b>TLS</b>, keep <b>Verify TLS</b> enabled, and use <code>{bull}</code> as <b>Prefix</b>.</p>
-  <p>Redis should use <code>maxmemory-policy=noeviction</code>. Bull v4 Redis queue data is not automatically migrated to BullMQ.</p>
+  <p>Redis must use <code>maxmemory-policy=noeviction</code> and durable persistence; BullMQ recommends Append Only File (AOF) for self-managed Redis. Job data is stored in clear text, so avoid sensitive payloads or encrypt sensitive fields before adding a job. Bull v4 Redis queue data is not automatically migrated to BullMQ.</p>
 </script>
 
 <script type="text/html" data-template-name="bullmq cmd">
