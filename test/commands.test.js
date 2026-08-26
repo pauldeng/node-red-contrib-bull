@@ -123,49 +123,42 @@ test("adds a normal job through BullMQ Queue.add", async () => {
   ]);
 });
 
-test("adds legacy repeat jobs through upsertJobScheduler", async () => {
+test("rejects repeat options on add", async () => {
   const queue = createQueueStub();
 
-  await dispatchCommand(queue, {
-    cmd: "add",
-    payload: "gateway-FCC23DFFFE0AA2A8",
-    jobopts: {
-      jobId: "gateway-FCC23DFFFE0AA2A8",
-      repeat: { cron: "30 9,19,29,39,49,59 * * * *" },
-    },
-  });
-
-  assert.deepEqual(queue.calls[0], [
-    "upsertJobScheduler",
-    "gateway-FCC23DFFFE0AA2A8",
-    { pattern: "30 9,19,29,39,49,59 * * * *" },
-    {
-      name: "default",
-      data: { payload: "gateway-FCC23DFFFE0AA2A8" },
-      opts: {},
-    },
-  ]);
+  await assert.rejects(
+    () =>
+      dispatchCommand(queue, {
+        cmd: "add",
+        jobopts: { repeat: { pattern: "*/1 * * * *" } },
+      }),
+    /upsertJobScheduler/,
+  );
+  assert.deepEqual(queue.calls, []);
 });
 
-test("maps legacy repeat commands to Job Scheduler APIs", async () => {
+test("uses BullMQ v6 Job Scheduler commands", async () => {
   const queue = createQueueStub();
 
-  assert.equal(await dispatchCommand(queue, { cmd: "count" }), 2);
-  assert.deepEqual(await dispatchCommand(queue, { cmd: "getRepeatableJobs" }), [
+  assert.equal(
+    await dispatchCommand(queue, { cmd: "getJobSchedulersCount" }),
+    2,
+  );
+  assert.deepEqual(await dispatchCommand(queue, { cmd: "getJobSchedulers" }), [
     { id: "a" },
     { id: "b" },
   ]);
   assert.deepEqual(
     await dispatchCommand(queue, {
-      cmd: "getRepeatableJobByKey",
-      jobid: "gateway",
+      cmd: "getJobScheduler",
+      schedulerId: "gateway",
     }),
     { id: "gateway" },
   );
   assert.equal(
     await dispatchCommand(queue, {
-      cmd: "removeRepeatableByKey",
-      jobid: "gateway",
+      cmd: "removeJobScheduler",
+      schedulerId: "gateway",
     }),
     true,
   );
@@ -176,6 +169,85 @@ test("maps legacy repeat commands to Job Scheduler APIs", async () => {
     ["getJobScheduler", "gateway"],
     ["removeJobScheduler", "gateway"],
   ]);
+});
+
+test("rejects removed scheduler repeat fields", async () => {
+  for (const repeat of [
+    { cron: "*/1 * * * *" },
+    { pattern: "*/1 * * * *", utc: true },
+  ]) {
+    await assert.rejects(
+      () =>
+        dispatchCommand(createQueueStub(), {
+          cmd: "upsertJobScheduler",
+          schedulerId: "heartbeat",
+          repeat,
+          template: { name: "heartbeat" },
+        }),
+      /repeat\.pattern and repeat\.tz/,
+    );
+  }
+});
+
+test("rejects a bare scheduler cron string with migration guidance", async () => {
+  await assert.rejects(
+    () =>
+      dispatchCommand(createQueueStub(), {
+        cmd: "upsertJobScheduler",
+        schedulerId: "heartbeat",
+        repeat: "*/5 * * * *",
+        template: { name: "heartbeat" },
+      }),
+    /msg\.repeat.*BullMQ v6 repeat options object/,
+  );
+});
+
+test("rejects removed command and field aliases", async () => {
+  const queue = createQueueStub();
+
+  for (const [cmd, replacement] of Object.entries({
+    count: "getJobSchedulersCount",
+    getRepeatableJobs: "getJobSchedulers",
+    getRepeatableJobByKey: "getJobScheduler",
+    removeRepeatableByKey: "removeJobScheduler",
+  })) {
+    await assert.rejects(
+      () => dispatchCommand(queue, { cmd }),
+      new RegExp(`${cmd}.*${replacement}`),
+    );
+  }
+  await assert.rejects(
+    () => dispatchCommand(queue, { command: "getJobSchedulersCount" }),
+    /msg\.command is not supported/,
+  );
+  await assert.rejects(
+    () => dispatchCommand(queue, { cmd: "getJob", jobid: "job-1" }),
+    /msg\.jobid is not supported/,
+  );
+});
+
+test("modern fields take precedence over unrelated or empty legacy fields", async () => {
+  const queue = createQueueStub();
+
+  await dispatchCommand(queue, {
+    cmd: "add",
+    command: "unrelated upstream value",
+    payload: "modern command wins",
+  });
+  assert.equal(queue.calls.at(-1)[0], "add");
+
+  const recordingQueue = createRecordingQueue({
+    getJob: { id: "job-1", name: "example" },
+  });
+  assert.deepEqual(
+    await dispatchCommand(recordingQueue, {
+      cmd: "getJob",
+      jobId: "job-1",
+      jobid: undefined,
+    }),
+    { id: "job-1", name: "example" },
+  );
+  assert.deepEqual(recordingQueue.calls, [["getJob", "job-1"]]);
 });
 
 test("stopAndRemoveAllJobs removes schedulers, drains, and cleans inactive states", async () => {
@@ -239,7 +311,7 @@ test("maps job listing commands and serializes jobs", async () => {
     [{ id: "job-1", name: "example" }],
   );
   assert.deepEqual(
-    await dispatchCommand(queue, { cmd: "getJob", jobid: "job-1" }),
+    await dispatchCommand(queue, { cmd: "getJob", jobId: "job-1" }),
     { id: "job-1", name: "example" },
   );
   assert.deepEqual(
@@ -516,7 +588,7 @@ test("uses documented command defaults", async () => {
   await dispatchCommand(queue, { cmd: "getJobSchedulers" });
   await dispatchCommand(queue, { cmd: "drain" });
   await dispatchCommand(queue, { cmd: "clean" });
-  await dispatchCommand(queue, { cmd: "getJobLogs", jobid: "job-1" });
+  await dispatchCommand(queue, { cmd: "getJobLogs", jobId: "job-1" });
 
   assert.deepEqual(queue.calls, [
     ["getJobs", undefined, 0, -1, false],
@@ -530,8 +602,10 @@ test("uses documented command defaults", async () => {
 });
 
 test("rejects unsupported command names", async () => {
-  await assert.rejects(
-    () => dispatchCommand(createQueueStub(), { cmd: "unknown" }),
-    /Unsupported bull cmd/,
-  );
+  for (const cmd of ["unknown", "constructor"]) {
+    await assert.rejects(
+      () => dispatchCommand(createQueueStub(), { cmd }),
+      /Unsupported bullmq cmd/,
+    );
+  }
 });

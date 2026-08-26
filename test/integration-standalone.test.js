@@ -25,6 +25,25 @@ async function waitForInputMessage(node, timeoutMs) {
   return msg;
 }
 
+function waitForInputMessages(node, count, timeoutMs = 10000) {
+  return new Promise((resolve, reject) => {
+    const messages = [];
+    const timeout = setTimeout(() => {
+      node.removeListener("input", receive);
+      reject(new Error(`Timed out waiting for ${count} input messages`));
+    }, timeoutMs);
+    function receive(msg) {
+      messages.push(msg);
+      if (messages.length === count) {
+        clearTimeout(timeout);
+        node.removeListener("input", receive);
+        resolve(messages);
+      }
+    }
+    node.on("input", receive);
+  });
+}
+
 async function waitForRedis(port) {
   const deadline = Date.now() + 10000;
   let lastError;
@@ -106,7 +125,7 @@ async function stopHelper(userDir) {
 function queueConfig(id, name, redis) {
   return {
     id,
-    type: "bull-queue-server",
+    type: "bullmq-queue-server",
     name,
     deployment: "single",
     address: "127.0.0.1",
@@ -134,7 +153,7 @@ async function receiveCommand(node, output, msg) {
 }
 
 test(
-  "standalone Redis flow adds, runs, and manages legacy repeat schedulers",
+  "standalone Redis flow adds, runs, and manages BullMQ v6 schedulers",
   { skip: !enabled },
   async () => {
     const redis = await startRedis();
@@ -145,7 +164,7 @@ test(
         { id: "tab", type: "tab", label: "test" },
         {
           id: "queue",
-          type: "bull-queue-server",
+          type: "bullmq-queue-server",
           name: "basecasts",
           deployment: "single",
           address: "127.0.0.1",
@@ -153,7 +172,7 @@ test(
         },
         {
           id: "cmd",
-          type: "bull cmd",
+          type: "bullmq cmd",
           z: "tab",
           name: "cmd",
           queue: "queue",
@@ -164,7 +183,7 @@ test(
         { id: "cmd-out", type: "helper", z: "tab", x: 560, y: 120, wires: [] },
         {
           id: "run",
-          type: "bull run",
+          type: "bullmq run",
           z: "tab",
           name: "run",
           queue: "queue",
@@ -196,31 +215,32 @@ test(
 
       const scheduleOutput = waitForInput(cmdOut);
       cmd.receive({
-        cmd: "add",
-        payload: "gateway-FCC23DFFFE0AA2A8",
-        jobopts: {
-          jobId: "gateway-FCC23DFFFE0AA2A8",
-          repeat: { cron: "30 9,19,29,39,49,59 * * * *" },
-          removeOnComplete: true,
+        cmd: "upsertJobScheduler",
+        schedulerId: "gateway-FCC23DFFFE0AA2A8",
+        repeat: { pattern: "30 9,19,29,39,49,59 * * * *", tz: "UTC" },
+        template: {
+          name: "default",
+          data: { payload: "gateway-FCC23DFFFE0AA2A8" },
+          opts: { removeOnComplete: true },
         },
       });
       assert.equal((await scheduleOutput).payload.name, "default");
 
       const countOutput = waitForInput(cmdOut);
-      cmd.receive({ cmd: "count" });
+      cmd.receive({ cmd: "getJobSchedulersCount" });
       assert.equal((await countOutput).payload, 1);
 
       const getOutput = waitForInput(cmdOut);
       cmd.receive({
-        cmd: "getRepeatableJobByKey",
-        jobid: "gateway-FCC23DFFFE0AA2A8",
+        cmd: "getJobScheduler",
+        schedulerId: "gateway-FCC23DFFFE0AA2A8",
       });
       assert.equal((await getOutput).payload.key, "gateway-FCC23DFFFE0AA2A8");
 
       const removeOutput = waitForInput(cmdOut);
       cmd.receive({
-        cmd: "removeRepeatableByKey",
-        jobid: "gateway-FCC23DFFFE0AA2A8",
+        cmd: "removeJobScheduler",
+        schedulerId: "gateway-FCC23DFFFE0AA2A8",
       });
       assert.equal((await removeOutput).payload, true);
     } finally {
@@ -231,7 +251,7 @@ test(
 );
 
 test(
-  "manual acknowledgement completes a BullMQ job through bull job",
+  "manual acknowledgement completes a BullMQ job through bullmq job",
   { skip: !enabled },
   async () => {
     const redis = await startRedis();
@@ -242,7 +262,7 @@ test(
         { id: "tab", type: "tab", label: "manual ack" },
         {
           id: "queue",
-          type: "bull-queue-server",
+          type: "bullmq-queue-server",
           name: "manualcasts",
           deployment: "single",
           address: "127.0.0.1",
@@ -250,7 +270,7 @@ test(
         },
         {
           id: "cmd",
-          type: "bull cmd",
+          type: "bullmq cmd",
           z: "tab",
           name: "cmd",
           queue: "queue",
@@ -261,7 +281,7 @@ test(
         { id: "cmd-out", type: "helper", z: "tab", x: 360, y: 120, wires: [] },
         {
           id: "run",
-          type: "bull run",
+          type: "bullmq run",
           z: "tab",
           name: "manual worker",
           queue: "queue",
@@ -274,7 +294,7 @@ test(
         },
         {
           id: "complete",
-          type: "bull job",
+          type: "bullmq job",
           z: "tab",
           name: "complete",
           action: "complete",
@@ -308,7 +328,7 @@ test(
 );
 
 test(
-  "dedicated repeatable jobs example commands work against Redis",
+  "dedicated Job Scheduler example commands work against Redis",
   { skip: !enabled },
   async () => {
     const redis = await startRedis();
@@ -326,7 +346,7 @@ test(
         },
         {
           id: "cmd",
-          type: "bull cmd",
+          type: "bullmq cmd",
           z: "tab",
           name: "cmd",
           queue: "queue",
@@ -422,7 +442,7 @@ test(
 );
 
 test(
-  "bull cmd manages delayed jobs, priorities, and global rate limits",
+  "bullmq cmd manages delayed jobs, priorities, and global rate limits",
   { skip: !enabled },
   async () => {
     const redis = await startRedis();
@@ -434,7 +454,7 @@ test(
         queueConfig("queue", "featurecasts", redis),
         {
           id: "cmd",
-          type: "bull cmd",
+          type: "bullmq cmd",
           z: "tab",
           name: "cmd",
           queue: "queue",
@@ -529,7 +549,7 @@ test(
 );
 
 test(
-  "bull events reports deduplicated jobs from bull cmd",
+  "bullmq events reports deduplicated jobs from bullmq cmd",
   { skip: !enabled },
   async () => {
     const redis = await startRedis();
@@ -541,7 +561,7 @@ test(
         queueConfig("queue", "eventcasts", redis),
         {
           id: "cmd",
-          type: "bull cmd",
+          type: "bullmq cmd",
           z: "tab",
           name: "cmd",
           queue: "queue",
@@ -552,7 +572,7 @@ test(
         { id: "cmd-out", type: "helper", z: "tab", x: 380, y: 120, wires: [] },
         {
           id: "events",
-          type: "bull events",
+          type: "bullmq events",
           z: "tab",
           name: "events",
           queue: "queue",
@@ -620,7 +640,7 @@ test(
 );
 
 test(
-  "bull flow adds parent and child jobs through FlowProducer",
+  "bullmq flow adds parent and child jobs through FlowProducer",
   { skip: !enabled },
   async () => {
     const redis = await startRedis();
@@ -632,7 +652,7 @@ test(
         queueConfig("queue", "flowcasts", redis),
         {
           id: "flow",
-          type: "bull flow",
+          type: "bullmq flow",
           z: "tab",
           name: "flow",
           queue: "queue",
@@ -676,7 +696,7 @@ test(
 );
 
 test(
-  "bull job cancelJob aborts a live BullMQ worker processor",
+  "bullmq job cancelJob aborts each live retry attempt",
   { skip: !enabled },
   async () => {
     const redis = await startRedis();
@@ -688,7 +708,7 @@ test(
         queueConfig("queue", "cancelcasts", redis),
         {
           id: "cmd",
-          type: "bull cmd",
+          type: "bullmq cmd",
           z: "tab",
           name: "cmd",
           queue: "queue",
@@ -698,7 +718,7 @@ test(
         },
         {
           id: "events",
-          type: "bull events",
+          type: "bullmq events",
           z: "tab",
           name: "events",
           queue: "queue",
@@ -717,7 +737,7 @@ test(
         },
         {
           id: "run",
-          type: "bull run",
+          type: "bullmq run",
           z: "tab",
           name: "cancel worker",
           queue: "queue",
@@ -730,7 +750,7 @@ test(
         },
         {
           id: "cancel",
-          type: "bull job",
+          type: "bullmq job",
           z: "tab",
           name: "cancel",
           action: "cancelJob",
@@ -746,24 +766,111 @@ test(
       const jobOut = helper.getNode("job-out");
       const eventsOut = helper.getNode("events-out");
 
-      const cancelOutput = waitForInput(jobOut);
+      const cancelOutputs = waitForInputMessages(jobOut, 2);
+      // Only ONE failed event, even though both attempts are cancelled: BullMQ
+      // emits "failed" from moveToFinished, which a retryable failure never
+      // reaches -- Job.moveToFailed branches to moveToDelayed/retryJob while
+      // attempts remain (see node_modules/bullmq/dist/cjs/classes/job.js,
+      // "Only record failed metrics when job is not retrying").
       const failedEvent = waitForInput(eventsOut);
       cmd.receive({
         cmd: "add",
         payload: "cancel me",
-        jobopts: { attempts: 1, removeOnFail: false },
+        jobopts: { attempts: 2, removeOnFail: false },
       });
 
       // Proves the arity-3 processor really did make BullMQ create and track an
       // AbortController for this job: cancelJob returns false when no
       // cancellable processor is registered.
-      assert.equal((await cancelOutput).payload, true);
+      assert.deepEqual(
+        (await cancelOutputs).map((msg) => msg.payload),
+        [true, true],
+      );
 
       // Aborting the signal does not settle the acknowledgement on its own, so
       // this event only arrives if the abort listener failed the job.
       const failed = await failedEvent;
       assert.equal(failed.topic, "failed");
       assert.match(failed.payload.failedReason, /BullMQ job cancelled/);
+    } finally {
+      await stopHelper(userDir);
+      redis.stop();
+    }
+  },
+);
+
+test(
+  "bullmq job cancelAllJobs aborts every active job on its worker",
+  { skip: !enabled },
+  async () => {
+    const redis = await startRedis();
+    const userDir = await startHelper();
+
+    try {
+      const flow = [
+        { id: "tab", type: "tab", label: "cancel all" },
+        queueConfig("queue", "cancelallcasts", redis),
+        {
+          id: "cmd",
+          type: "bullmq cmd",
+          z: "tab",
+          queue: "queue",
+          wires: [[]],
+        },
+        {
+          id: "run",
+          type: "bullmq run",
+          z: "tab",
+          queue: "queue",
+          completionMode: "manual",
+          ackTimeout: 300000,
+          concurrency: 2,
+          wires: [["active-out"]],
+        },
+        {
+          id: "active-out",
+          type: "helper",
+          z: "tab",
+          wires: [],
+        },
+        {
+          id: "cancel-all",
+          type: "bullmq job",
+          z: "tab",
+          action: "cancelAllJobs",
+          wires: [["cancel-out"]],
+        },
+        {
+          id: "cancel-out",
+          type: "helper",
+          z: "tab",
+          wires: [],
+        },
+      ];
+
+      await helper.load(bullNodes, flow);
+      const cmd = helper.getNode("cmd");
+      const activeJobs = waitForInputMessages(helper.getNode("active-out"), 2);
+      const cancelOutput = waitForInput(helper.getNode("cancel-out"));
+
+      cmd.receive({
+        cmd: "addBulk",
+        payload: [
+          { name: "first", data: { payload: "first" } },
+          { name: "second", data: { payload: "second" } },
+        ],
+      });
+
+      const [first] = await activeJobs;
+      helper.getNode("cancel-all").receive(first);
+      assert.equal((await cancelOutput).payload, true);
+
+      const queue = helper.getNode("queue").getQueue();
+      const deadline = Date.now() + 10000;
+      while ((await queue.getFailedCount()) !== 2 && Date.now() < deadline) {
+        await sleep(25);
+      }
+      assert.equal(await queue.getFailedCount(), 2);
     } finally {
       await stopHelper(userDir);
       redis.stop();

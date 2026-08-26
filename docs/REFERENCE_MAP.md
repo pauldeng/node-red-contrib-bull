@@ -4,10 +4,10 @@
 
 - `bull-queue.js`: Node-RED registration and runtime glue.
 - `lib/connections.js`: Redis deployment normalization and ioredis descriptors.
-- `lib/scheduler.js`: legacy repeat-cron to BullMQ Job Scheduler normalization.
-- `lib/commands.js`: `bull cmd` dispatch.
+- `lib/scheduler.js`: BullMQ v6 Job Scheduler id handling and serialization.
+- `lib/commands.js`: `bullmq cmd` dispatch.
 - `lib/serialization.js`: message-safe BullMQ serialization.
-- `lib/acknowledgements.js`: manual-acknowledgement registry for `bull run`/`bull job`. Entries self-remove on settle.
+- `lib/acknowledgements.js`: manual-acknowledgement registry for `bullmq run`/`bullmq job`. Entries self-remove on settle.
 
 ## Editor
 
@@ -18,7 +18,7 @@
 
 - `test/package-contract.test.js`: dependency and runtime import contract.
 - `test/connections.test.js`: Redis topology option normalization.
-- `test/scheduler.test.js`: repeat scheduler compatibility.
+- `test/scheduler.test.js`: native Job Scheduler id and serialization contracts.
 - `test/commands.test.js`: command dispatch behavior.
 - `test/acknowledgements.test.js`: manual-acknowledgement registry lifecycle and leak prevention.
 - `test/shutdown.test.js`: BullMQ/ioredis resource ownership, partial redeploy cleanup, and concurrent shutdown.
@@ -56,6 +56,6 @@
 - `docs/COMMANDS.md`: command reference.
 - `docs/CONNECTIONS.md`: Redis deployments.
 - `docs/TELEMETRY.md`: opt-in OpenTelemetry tracing and metrics.
-- `docs/MIGRATION.md`: Bull v4 migration.
+- `docs/MIGRATION.md`: breaking upgrade from older package versions.
 - `docs/TESTING.md`: verification plan.
 - `docs/TROUBLESHOOTING.md`: operational issues.

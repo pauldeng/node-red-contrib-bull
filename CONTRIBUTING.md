@@ -18,7 +18,7 @@ Both gate CI. Editor changes also need `npm run test:playwright`; Redis deployme
 
 ## Rules And Workflow
 
-- [docs/RULES.md](docs/RULES.md) — constraints that must not be broken: legacy node types, pinned dependencies, secret handling, scheduler ids, cluster prefixes.
+- [docs/RULES.md](docs/RULES.md) — constraints that must not be broken: BullMQ v6 node types, pinned dependencies, secret handling, scheduler ids, cluster prefixes.
 - [docs/CHANGE_WORKFLOW.md](docs/CHANGE_WORKFLOW.md) — the test-first loop, and what to update for connection, scheduler, and editor changes.
 - [docs/REFERENCE_MAP.md](docs/REFERENCE_MAP.md) — which source file and which test own a given behavior.
 

@@ -7,18 +7,18 @@ npm test
 npm run format:check
 ```
 
-`npm test` runs built-in `node:test` suites for package metadata, connection normalization, scheduler compatibility, command dispatch, editor surface, registration, resource shutdown, async style, telemetry wiring, Docker fixture contracts, docs, and examples. The lifecycle checks live in `test/shutdown.test.js`; bounded-close implementation constraints live in `test/async-style.test.js`. `npm run format:check` runs Prettier. CI gates both on every pull request.
+`npm test` runs built-in `node:test` suites for package metadata, connection normalization, Job Scheduler commands, command dispatch, editor surface, registration, resource shutdown, async style, telemetry wiring, Docker fixture contracts, docs, and examples. The lifecycle checks live in `test/shutdown.test.js`; bounded-close implementation constraints live in `test/async-style.test.js`. `npm run format:check` runs Prettier. CI gates both on every pull request.
 
 ## Node-RED Runtime Tests
 
 Use `node-red-node-test-helper` for flow-level tests. Runtime coverage should load actual Node-RED flows for:
 
-- `bull cmd` success and failure paths;
-- `bull run` immediate and manual modes;
-- `bull job` acknowledgement actions;
-- `bull events`;
-- `bull flow`;
-- legacy flow compatibility.
+- `bullmq cmd` success and failure paths;
+- `bullmq run` immediate and manual modes;
+- `bullmq job` acknowledgement actions;
+- `bullmq events`;
+- `bullmq flow`;
+- BullMQ v6 Job Scheduler commands.
 
 The current standalone Redis integration suite is opt-in:
 
@@ -28,14 +28,14 @@ npm run test:integration
 
 It starts a temporary local `redis-server`, loads real Node-RED flows, and verifies:
 
-- `bull cmd` add/run behavior;
-- manual `bull run` acknowledgement through `bull job`;
-- legacy repeat scheduler creation, lookup, and removal;
+- `bullmq cmd` add/run behavior;
+- manual `bullmq run` acknowledgement through `bullmq job`;
+- native Job Scheduler creation, lookup, and removal;
 - delayed-job commands;
 - priority listing and counts;
 - global rate-limit commands;
-- deduplication commands and `bull events` delivery;
-- `bull flow` parent/child FlowProducer output.
+- deduplication commands and `bullmq events` delivery;
+- `bullmq flow` parent/child FlowProducer output.
 
 ## Playwright
 
@@ -67,7 +67,7 @@ Current executable fixtures:
 - `sentinel-auth`: Redis master, two replicas, and three Sentinels with data-node ACL auth
 - `sentinel-tls`: Redis master, two replicas, and three TLS-enabled Sentinels
 
-The shared deployment test proves Node-RED load, connection, add/run delivery, legacy scheduler compatibility through `basecasts` creation/removal, and absolute scheduler minute/second metadata. TLS fixtures use local self-signed test certificates and disable certificate verification for those Docker-only deployments. MemoryDB remains the certificate-verified TLS deployment path.
+The shared deployment test proves Node-RED load, credential-backed auth, add/run delivery, native scheduler creation/removal, absolute scheduler minute/second metadata, live cancellation retries and `cancelAllJobs`, and OpenTelemetry add/process spans plus completed/duration metrics. TLS fixtures use local self-signed test certificates and disable certificate verification for those Docker-only deployments. MemoryDB remains the certificate-verified TLS deployment path.
 
 ## AWS MemoryDB
 

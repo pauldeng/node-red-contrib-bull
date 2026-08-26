@@ -14,7 +14,9 @@ const DEAD_REDIS = {
   port: "6399",
 };
 
-const CLOSE_DEADLINE_MS = 4000;
+// CLOSE_GRACE_MS is 1000ms; allow scheduler/CI overhead without permitting a
+// second full grace period.
+const CLOSE_DEADLINE_MS = 1500;
 
 function createRED(options = {}) {
   const registered = new Map();
@@ -40,7 +42,7 @@ function createRED(options = {}) {
 }
 
 function buildServerNode(RED) {
-  const Server = RED.registered.get("bull-queue-server").constructor;
+  const Server = RED.registered.get("bullmq-queue-server").constructor;
   const server = {};
   Server.call(server, DEAD_REDIS);
   return server;
@@ -92,7 +94,7 @@ function forceCleanup(server) {
   }
 }
 
-test("bull-queue-server close settles promptly when Redis is unreachable", async () => {
+test("bullmq-queue-server close settles promptly when Redis is unreachable", async () => {
   const RED = createRED();
   registerBullMQNodes(RED);
   const server = buildServerNode(RED);
@@ -133,7 +135,7 @@ test("bull-queue-server close settles promptly when Redis is unreachable", async
   }
 });
 
-test("bull run close settles promptly when Redis is unreachable", async () => {
+test("bullmq run close settles promptly when Redis is unreachable", async () => {
   let server;
   const RED = createRED({
     getNode() {
@@ -142,7 +144,7 @@ test("bull run close settles promptly when Redis is unreachable", async () => {
   });
   registerBullMQNodes(RED);
   server = buildServerNode(RED);
-  const RunNode = RED.registered.get("bull run").constructor;
+  const RunNode = RED.registered.get("bullmq run").constructor;
   const runNode = {};
 
   try {
@@ -153,7 +155,7 @@ test("bull run close settles promptly when Redis is unreachable", async () => {
     assert.equal(
       result,
       "closed",
-      "bull run close must settle while Redis is unreachable",
+      "bullmq run close must settle while Redis is unreachable",
     );
 
     const serverResult = await settleWithin(
@@ -166,7 +168,7 @@ test("bull run close settles promptly when Redis is unreachable", async () => {
   }
 });
 
-test("bull events close settles promptly when Redis is unreachable", async () => {
+test("bullmq events close settles promptly when Redis is unreachable", async () => {
   let server;
   const RED = createRED({
     getNode() {
@@ -175,7 +177,7 @@ test("bull events close settles promptly when Redis is unreachable", async () =>
   });
   registerBullMQNodes(RED);
   server = buildServerNode(RED);
-  const EventsNode = RED.registered.get("bull events").constructor;
+  const EventsNode = RED.registered.get("bullmq events").constructor;
   const eventsNode = {};
 
   try {
@@ -189,7 +191,7 @@ test("bull events close settles promptly when Redis is unreachable", async () =>
     assert.equal(
       result,
       "closed",
-      "bull events close must settle while Redis is unreachable",
+      "bullmq events close must settle while Redis is unreachable",
     );
 
     const serverResult = await settleWithin(
@@ -202,7 +204,7 @@ test("bull events close settles promptly when Redis is unreachable", async () =>
   }
 });
 
-test("bull flow close settles promptly when Redis is unreachable", async () => {
+test("bullmq flow close settles promptly when Redis is unreachable", async () => {
   let server;
   const RED = createRED({
     getNode() {
@@ -211,7 +213,7 @@ test("bull flow close settles promptly when Redis is unreachable", async () => {
   });
   registerBullMQNodes(RED);
   server = buildServerNode(RED);
-  const FlowNode = RED.registered.get("bull flow").constructor;
+  const FlowNode = RED.registered.get("bullmq flow").constructor;
   const flowNode = {};
 
   try {
@@ -222,7 +224,7 @@ test("bull flow close settles promptly when Redis is unreachable", async () => {
     assert.equal(
       result,
       "closed",
-      "bull flow close must settle while Redis is unreachable",
+      "bullmq flow close must settle while Redis is unreachable",
     );
 
     const serverResult = await settleWithin(
@@ -246,15 +248,15 @@ test("runtime partial closes release raw Redis connections", async () => {
   const runtimeNodes = [runNode, eventsNode, flowNode];
 
   try {
-    RED.registered.get("bull run").constructor.call(runNode, {
+    RED.registered.get("bullmq run").constructor.call(runNode, {
       queue: "queue",
       completionMode: "immediate",
     });
     RED.registered
-      .get("bull events")
+      .get("bullmq events")
       .constructor.call(eventsNode, { queue: "queue" });
     RED.registered
-      .get("bull flow")
+      .get("bullmq flow")
       .constructor.call(flowNode, { queue: "queue" });
     await delay(200);
 
@@ -344,34 +346,28 @@ test("config close starts independent resource pairs concurrently", async () => 
   }
 });
 
-test("config close force-disconnects by awaiting the public disconnect() API", async () => {
+test("config close force-disconnects within one shutdown budget", async () => {
   const RED = createRED();
   registerBullMQNodes(RED);
   const server = buildServerNode(RED);
 
   const neverGate = new EventEmitter();
-  const events = [];
+  const rawDisconnectCalls = [];
   const owner = {
     async close() {
       // Never settles, forcing the CLOSE_GRACE_MS fallback to fire.
       await once(neverGate, "release");
     },
-    async disconnect() {
-      events.push("disconnect-start");
-      await delay(30);
-      events.push("disconnect-end");
-    },
-    get connection() {
-      throw new Error("must not read resource.connection");
-    },
-    get blockingConnection() {
-      throw new Error("must not read resource.blockingConnection");
-    },
-    get _client() {
-      throw new Error("must not read resource._client");
-    },
     getBackend() {
-      throw new Error("must not call resource.getBackend()");
+      return {
+        connection: {
+          _client: {
+            disconnect(wait) {
+              rawDisconnectCalls.push(wait);
+            },
+          },
+        },
+      };
     },
   };
   const connection = { async close() {} };
@@ -382,27 +378,16 @@ test("config close force-disconnects by awaiting the public disconnect() API", a
     assert.equal(
       result,
       "closed",
-      "config close must settle by force-disconnecting through disconnect()",
+      "config close must settle inside one bounded shutdown budget",
     );
-    assert.deepEqual(
-      events,
-      ["disconnect-start", "disconnect-end"],
-      "close must call and fully await resource.disconnect(), not fire-and-forget it",
-    );
+    assert.deepEqual(rawDisconnectCalls, [false]);
   } finally {
     neverGate.emit("release");
     forceCleanup(server);
   }
 });
 
-// Measured against installed BullMQ 6.2.1: when the connection never became
-// ready (e.g. Redis unreachable), disconnect() itself awaits the same
-// ready-promise as close() and never settles either -- confirmed with a
-// direct QueueEvents.disconnect() run against a dead Redis (see report). So
-// the fallback below is required, not optional: when disconnect() ALSO times
-// out, forceDisconnect must escalate to the backend's raw clients so the
-// process can still exit.
-test("config close escalates to the backend's raw clients when disconnect() also hangs", async () => {
+test("config close stops BullMQ worker timers after a forced disconnect", async () => {
   const RED = createRED();
   registerBullMQNodes(RED);
   const server = buildServerNode(RED);
@@ -417,9 +402,6 @@ test("config close escalates to the backend's raw clients when disconnect() also
   const stopped = [];
   const owner = {
     async close() {
-      await once(neverGate, "release");
-    },
-    async disconnect() {
       await once(neverGate, "release");
     },
     getBackend() {
@@ -468,7 +450,7 @@ test("config close escalates to the backend's raw clients when disconnect() also
   }
 });
 
-test("bull run reports a uniform disconnected status when Redis is unreachable", async () => {
+test("bullmq run reports a uniform disconnected status when Redis is unreachable", async () => {
   let server;
   const statuses = [];
   const RED = createRED({
@@ -481,7 +463,7 @@ test("bull run reports a uniform disconnected status when Redis is unreachable",
   });
   registerBullMQNodes(RED);
   server = buildServerNode(RED);
-  const RunNode = RED.registered.get("bull run").constructor;
+  const RunNode = RED.registered.get("bullmq run").constructor;
   const runNode = {};
 
   try {

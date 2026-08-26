@@ -9,16 +9,16 @@ test("loads BullMQ node definitions in the Node-RED editor", async ({
       window.RED &&
       RED.nodes &&
       RED.nodes.getType &&
-      RED.nodes.getType("bull flow"),
+      RED.nodes.getType("bullmq flow"),
   );
 
   const definitions = await page.evaluate(() => ({
-    config: RED.nodes.getType("bull-queue-server"),
-    cmd: RED.nodes.getType("bull cmd"),
-    run: RED.nodes.getType("bull run"),
-    job: RED.nodes.getType("bull job"),
-    events: RED.nodes.getType("bull events"),
-    flow: RED.nodes.getType("bull flow"),
+    config: RED.nodes.getType("bullmq-queue-server"),
+    cmd: RED.nodes.getType("bullmq cmd"),
+    run: RED.nodes.getType("bullmq run"),
+    job: RED.nodes.getType("bullmq job"),
+    events: RED.nodes.getType("bullmq events"),
+    flow: RED.nodes.getType("bullmq flow"),
   }));
 
   expect(definitions.config.defaults.deployment.value).toBe("single");
@@ -28,17 +28,17 @@ test("loads BullMQ node definitions in the Node-RED editor", async ({
   expect(definitions.run.defaults.ackTimeout.value).toBe(300000);
   expect(definitions.job.defaults.action.value).toBe("complete");
   expect(definitions.events.defaults.events.value).toBe("");
-  expect(definitions.flow.defaults.queue.type).toBe("bull-queue-server");
-  expect(definitions.cmd.defaults.queue.type).toBe("bull-queue-server");
+  expect(definitions.flow.defaults.queue.type).toBe("bullmq-queue-server");
+  expect(definitions.cmd.defaults.queue.type).toBe("bullmq-queue-server");
 });
 
 test("loads BullMQ config and worker editor templates", async ({ page }) => {
   await page.goto("/");
   const configTemplate = await page
-    .locator('script[data-template-name="bull-queue-server"]')
+    .locator('script[data-template-name="bullmq-queue-server"]')
     .textContent();
   const runTemplate = await page
-    .locator('script[data-template-name="bull run"]')
+    .locator('script[data-template-name="bullmq run"]')
     .textContent();
 
   for (const id of [
@@ -69,7 +69,7 @@ test("toggles deployment and completion-specific rows", async ({ page }) => {
     const loader = document.querySelector("#red-ui-loading-progress");
     return (
       window.RED &&
-      RED.nodes.getType("bull run") &&
+      RED.nodes.getType("bullmq run") &&
       RED.workspaces.active() &&
       loader &&
       getComputedStyle(loader).display === "none"
@@ -77,10 +77,10 @@ test("toggles deployment and completion-specific rows", async ({ page }) => {
   });
 
   await page.evaluate(() => {
-    const definition = RED.nodes.getType("bull run");
+    const definition = RED.nodes.getType("bullmq run");
     const node = {
       id: RED.nodes.id(),
-      type: "bull run",
+      type: "bullmq run",
       z: RED.workspaces.active(),
       _def: definition,
       name: "",
@@ -106,7 +106,7 @@ test("toggles deployment and completion-specific rows", async ({ page }) => {
   await page.locator("#node-dialog-cancel").click();
 
   await page.evaluate(() => {
-    RED.editor.editConfig("", "bull-queue-server", "_ADD_");
+    RED.editor.editConfig("", "bullmq-queue-server", "_ADD_");
   });
   await expect(page.locator("#node-config-input-deployment")).toBeVisible();
   await page.locator("#node-config-input-deployment").selectOption("cluster");
@@ -124,7 +124,7 @@ test("telemetry fields toggle their rows and persist across dialog close and reo
     const loader = document.querySelector("#red-ui-loading-progress");
     return (
       window.RED &&
-      RED.nodes.getType("bull-queue-server") &&
+      RED.nodes.getType("bullmq-queue-server") &&
       RED.workspaces.active() &&
       loader &&
       getComputedStyle(loader).display === "none"
@@ -132,7 +132,7 @@ test("telemetry fields toggle their rows and persist across dialog close and reo
   });
 
   await page.evaluate(() => {
-    RED.editor.editConfig("", "bull-queue-server", "_ADD_");
+    RED.editor.editConfig("", "bullmq-queue-server", "_ADD_");
   });
 
   await expect(page.locator("#node-config-input-telemetry")).toBeVisible();
@@ -164,7 +164,7 @@ test("telemetry fields toggle their rows and persist across dialog close and reo
     let id;
     RED.nodes.eachConfig((node) => {
       if (
-        node.type === "bull-queue-server" &&
+        node.type === "bullmq-queue-server" &&
         node.name === "telemetry-queue"
       ) {
         id = node.id;
@@ -175,7 +175,7 @@ test("telemetry fields toggle their rows and persist across dialog close and reo
   expect(configId).toBeTruthy();
 
   await page.evaluate((id) => {
-    RED.editor.editConfig("", "bull-queue-server", id);
+    RED.editor.editConfig("", "bullmq-queue-server", id);
   }, configId);
 
   await expect(page.locator("#node-config-input-telemetry")).toBeChecked();

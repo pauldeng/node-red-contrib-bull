@@ -19,12 +19,12 @@ function helpBlock(type) {
 
 test("editor defines templates and registrations for all node types", () => {
   for (const type of [
-    "bull-queue-server",
-    "bull run",
-    "bull cmd",
-    "bull job",
-    "bull events",
-    "bull flow",
+    "bullmq-queue-server",
+    "bullmq run",
+    "bullmq cmd",
+    "bullmq job",
+    "bullmq events",
+    "bullmq flow",
   ]) {
     assert.match(html, new RegExp(`data-template-name="${type}"`));
     assert.match(html, new RegExp(`registerType\\("${type}"`));
@@ -69,7 +69,7 @@ test("worker, job, events, and flow editors expose their stable config fields", 
 });
 
 test("help documents every config node field", () => {
-  const help = helpBlock("bull-queue-server");
+  const help = helpBlock("bullmq-queue-server");
   for (const text of [
     "Queue",
     "Deployment",
@@ -105,7 +105,7 @@ test("help documents every config node field", () => {
 
 test("help documents runtime node fields and message examples", () => {
   const expected = {
-    "bull cmd": [
+    "bullmq cmd": [
       "Name",
       "Queue",
       "msg.cmd",
@@ -119,7 +119,7 @@ test("help documents runtime node fields and message examples", () => {
       "setGlobalRateLimit",
       "Example",
     ],
-    "bull run": [
+    "bullmq run": [
       "Name",
       "Queue",
       "Completion",
@@ -132,7 +132,7 @@ test("help documents runtime node fields and message examples", () => {
       "msg.bull",
       "Example",
     ],
-    "bull job": [
+    "bullmq job": [
       "Name",
       "Action",
       "complete",
@@ -147,7 +147,7 @@ test("help documents runtime node fields and message examples", () => {
       "msg.cmd",
       "Example",
     ],
-    "bull events": [
+    "bullmq events": [
       "Name",
       "Queue",
       "Events",
@@ -161,7 +161,7 @@ test("help documents runtime node fields and message examples", () => {
       "msg.bull",
       "Example",
     ],
-    "bull flow": [
+    "bullmq flow": [
       "Name",
       "Queue",
       "msg.payload",
@@ -219,7 +219,7 @@ test("editor hides irrelevant rows and teaches configured completion", () => {
   assert.match(html, /id="node-config-input-name" placeholder="email-jobs"/);
   assert.match(html, /class="form-row bull-db-row"/);
   assert.match(html, /class="form-row bull-ack-timeout-row"/);
-  assert.match(helpBlock("bull job"), /delete msg\.cmd;/);
+  assert.match(helpBlock("bullmq job"), /delete msg\.cmd;/);
 });
 
 test("telemetry fields default off and their rows toggle with the telemetry checkbox", () => {

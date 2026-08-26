@@ -84,8 +84,8 @@ test("examples include the required basecasts scheduled job flow", () => {
   assert.match(example, /"name"\s*:\s*"basecasts"/);
   assert.match(example, /gateway-FCC23DFFFE0AA2A8/);
   assert.match(example, /30 9,19,29,39,49,59 \* \* \* \*/);
-  assert.match(example, /"type"\s*:\s*"bull events"/);
-  assert.match(example, /"type"\s*:\s*"bull flow"/);
+  assert.match(example, /"type"\s*:\s*"bullmq events"/);
+  assert.match(example, /"type"\s*:\s*"bullmq flow"/);
 });
 
 test("examples include simple BullMQ feature import flows", () => {
@@ -101,6 +101,8 @@ test("examples include simple BullMQ feature import flows", () => {
 
   for (const label of [
     "delay: send later",
+    "delay: series of one-off jobs",
+    "delay: series at exact date-times",
     "priority: high priority",
     "dedupe: same job once",
     "rate limit: 2 per second",
@@ -120,10 +122,13 @@ test("examples include simple BullMQ feature import flows", () => {
     "priority: 1",
     "deduplication: { id: msg.payload }",
     'msg.cmd = "setGlobalRateLimit"',
-    'repeat: { pattern: "*/1 * * * *" }',
-    '"bull events"',
-    '"bull job"',
-    '"bull flow"',
+    'msg.cmd = "upsertJobScheduler"',
+    'msg.repeat = { pattern: "*/1 * * * *" }',
+    'msg.cmd = "addBulk"',
+    "Date.parse(at) - now",
+    '"bullmq events"',
+    '"bullmq job"',
+    '"bullmq flow"',
   ]) {
     assert.match(
       searchableText,
@@ -132,7 +137,7 @@ test("examples include simple BullMQ feature import flows", () => {
   }
 });
 
-test("examples include a dedicated repeatable jobs command flow", () => {
+test("examples include a dedicated BullMQ v6 Job Scheduler flow", () => {
   const fileText = read("examples/repeatable_jobs.json");
   const example = JSON.parse(fileText);
   const readme = read("examples/README.md");
@@ -144,12 +149,13 @@ test("examples include a dedicated repeatable jobs command flow", () => {
   const searchableText = `${nodeText}\n${functionText}`;
 
   for (const label of [
-    "repeat: add basecasts job",
-    "repeat: getRepeatableJobs",
-    "repeat: count",
-    "repeat: getRepeatableJobByKey",
-    "repeat: removeRepeatableByKey",
-    "repeat: stopAndRemoveAllJobs",
+    "scheduler: upsert basecasts job",
+    "scheduler: getJobSchedulers",
+    "scheduler: getJobSchedulersCount",
+    "scheduler: getJobScheduler",
+    "scheduler: removeJobScheduler",
+    "scheduler: stopAndRemoveAllJobs",
+    "scheduler: upsert with timezone",
   ]) {
     assert.match(
       searchableText,
@@ -158,14 +164,15 @@ test("examples include a dedicated repeatable jobs command flow", () => {
   }
 
   for (const text of [
-    'msg.cmd = "add"',
-    'msg.jobopts = {"jobId": msg.payload, "repeat": {"cron": "30 9,19,29,39,49,59 * * * *"}};',
+    'msg.cmd = "upsertJobScheduler"',
+    'pattern: "30 9,19,29,39,49,59 * * * *"',
+    'tz: "UTC"',
     'msg.cmd = "stopAndRemoveAllJobs"',
-    'msg.cmd = "getRepeatableJobs"',
-    'msg.cmd = "count"',
-    'msg.cmd = "removeRepeatableByKey"',
-    "msg.jobid = msg.payload",
-    'msg.cmd = "getRepeatableJobByKey"',
+    'msg.cmd = "getJobSchedulers"',
+    'msg.cmd = "getJobSchedulersCount"',
+    'msg.cmd = "removeJobScheduler"',
+    "msg.schedulerId = msg.payload",
+    'msg.cmd = "getJobScheduler"',
     "gateway-FCC23DFFFE0AA2A8",
   ]) {
     assert.match(
@@ -307,10 +314,10 @@ test("maintained docs match current BullMQ runtime contracts", () => {
   assert.match(testing, /shutdown\.test\.js/);
   assert.match(testing, /async-style\.test\.js/);
 
-  assert.match(architecture, /`bull cmd`.*shared producer connection/i);
+  assert.match(architecture, /`bullmq cmd`.*shared producer connection/i);
   assert.match(architecture, /config node owns the shared queue/i);
-  assert.match(commands, /`msg\.command`.*legacy alias/i);
-  assert.match(nodeGuide, /`msg\.command`.*legacy alias/i);
+  assert.doesNotMatch(commands, /msg\.command/);
+  assert.doesNotMatch(nodeGuide, /msg\.command/);
 
   for (const event of [
     "active",
@@ -350,8 +357,8 @@ test("maintained docs match current BullMQ runtime contracts", () => {
   assert.match(connections, /DNS lookup passthrough/i);
   assert.doesNotMatch(connections, /TLS-enabled cluster discovery/);
   assert.match(connections, /rejects unauthorized certificates by default/i);
-  assert.match(connections, /`memorydb`.*compatibility alias/i);
-  assert.match(connections, /plaintext.*migration-only/i);
+  assert.doesNotMatch(connections, /`memorydb`.*compatibility alias/i);
+  assert.match(connections, /read only from Node-RED credentials/i);
 
   assert.doesNotMatch(troubleshooting, /msg\.jobopts\.jobId/);
   assert.doesNotMatch(release, /\.github\/workflows\/codeql\.yml/);

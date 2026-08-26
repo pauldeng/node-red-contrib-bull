@@ -1,6 +1,6 @@
 # Command Reference
 
-`bull cmd` reads `msg.cmd`. The `msg.command` field is a legacy alias; use `msg.cmd` in new flows. The node writes the command result to `msg.payload`.
+`bullmq cmd` reads `msg.cmd` and writes the command result to `msg.payload`.
 
 ## Jobs
 
@@ -15,7 +15,7 @@
 
 `add` uses `msg.jobName`, `msg.jobData` or `msg.payload`, and `msg.jobopts`.
 
-`addBulk` rejects any entry whose `opts.repeat` is set; use `upsertJobScheduler`, or `add` with `msg.jobopts.repeat`, to schedule repeating jobs (see Job Schedulers below).
+`add` and `addBulk` reject repeat options. Use `upsertJobScheduler` for repeating jobs.
 
 ## Delayed Jobs
 
@@ -25,6 +25,66 @@
 - `promoteJobs`
 
 Add a delayed job with `msg.jobopts.delay`.
+
+One one-off job, delayed by 10 seconds:
+
+```js
+msg.cmd = "add";
+msg.jobName = "delayed";
+msg.jobData = { payload: "first" };
+msg.jobopts = { delay: 10000, removeOnComplete: true };
+return msg;
+```
+
+A series of one-off jobs, each delayed from the time the batch is added:
+
+```js
+msg.cmd = "addBulk";
+msg.payload = [
+  {
+    name: "delayed-1",
+    data: { payload: "first" },
+    opts: { delay: 10000, removeOnComplete: true },
+  },
+  {
+    name: "delayed-2",
+    data: { payload: "second" },
+    opts: { delay: 20000, removeOnComplete: true },
+  },
+  {
+    name: "delayed-3",
+    data: { payload: "third" },
+    opts: { delay: 30000, removeOnComplete: true },
+  },
+];
+return msg;
+```
+
+These are ordinary jobs, not schedulers. Increasing delays make them eligible in sequence; worker availability and concurrency determine their actual start times.
+
+For a series with exact date-times, convert each ISO-8601 timestamp to a delay when enqueueing:
+
+```js
+const schedule = [
+  { at: "2030-01-01T09:00:00+11:00", payload: "first" },
+  { at: "2030-01-01T09:15:00+11:00", payload: "second" },
+  { at: "2030-01-01T09:30:00+11:00", payload: "third" },
+];
+const now = Date.now();
+
+msg.cmd = "addBulk";
+msg.payload = schedule.map(({ at, payload }, index) => ({
+  name: `scheduled-${index + 1}`,
+  data: { payload, scheduledFor: at },
+  opts: {
+    delay: Math.max(0, Date.parse(at) - now),
+    removeOnComplete: true,
+  },
+}));
+return msg;
+```
+
+Use timestamps with an explicit `Z` or numeric UTC offset. A past timestamp becomes immediately eligible. Delayed jobs are eligible at the requested time, but worker availability still determines when processing starts.
 
 ## Priorities
 
@@ -43,25 +103,15 @@ Add deduplication options through `msg.jobopts.deduplication`.
 
 ## Job Schedulers
 
-Native:
-
 - `upsertJobScheduler`
 - `getJobScheduler`
 - `getJobSchedulers`
 - `getJobSchedulersCount`
 - `removeJobScheduler`
 
-Legacy aliases:
+`upsertJobScheduler` uses `msg.schedulerId`, `msg.repeat`, and `msg.template`. Use `msg.repeat.pattern` for cron expressions and `msg.repeat.tz` for a timezone. Lookup and removal are exact-id based through `msg.schedulerId`.
 
-- `add` with `msg.jobopts.repeat`
-- `count`
-- `getRepeatableJobs`
-- `getRepeatableJobByKey`
-- `removeRepeatableByKey`
-
-Legacy lookup/removal is exact-id based.
-
-BullMQ v6 removed its own repeatable-job API (`Queue.getRepeatableJobs` and friends). The legacy alias commands above are this package's own mapping onto Job Schedulers, not a passthrough to BullMQ's methods, so they are unaffected and keep working.
+Removed repeatable-job command names fail with an error naming their BullMQ v6 replacement; see [MIGRATION.md](MIGRATION.md).
 
 ## Queue Administration
 

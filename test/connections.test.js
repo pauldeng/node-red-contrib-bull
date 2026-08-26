@@ -8,13 +8,15 @@ const {
   parseEndpointList,
 } = require("../lib/connections");
 
-test("normalizes legacy single Redis config", () => {
-  const config = normalizeQueueConfig({
-    name: "basecasts",
-    address: "redis.example.test",
-    port: "6380",
-    password: "secret",
-  });
+test("normalizes standalone Redis config and credential-backed secrets", () => {
+  const config = normalizeQueueConfig(
+    {
+      name: "basecasts",
+      address: "redis.example.test",
+      port: "6380",
+    },
+    { password: "secret" },
+  );
 
   assert.equal(config.queueName, "basecasts");
   assert.equal(config.deployment, "single");
@@ -25,15 +27,17 @@ test("normalizes legacy single Redis config", () => {
 });
 
 test("builds role-specific standalone Redis descriptors", () => {
-  const config = normalizeQueueConfig({
-    name: "secure",
-    address: "redis.example.test",
-    port: "6380",
-    username: "default",
-    password: "secret",
-    tls: true,
-    tlsServerName: "redis.example.test",
-  });
+  const config = normalizeQueueConfig(
+    {
+      name: "secure",
+      address: "redis.example.test",
+      port: "6380",
+      username: "default",
+      tls: true,
+      tlsServerName: "redis.example.test",
+    },
+    { password: "secret" },
+  );
 
   const producer = buildRedisDescriptor(config, "producer");
   assert.equal(producer.kind, "single");
@@ -52,15 +56,17 @@ test("builds role-specific standalone Redis descriptors", () => {
 });
 
 test("builds Cluster and MemoryDB descriptors with a BullMQ hash-tag prefix", () => {
-  const config = normalizeQueueConfig({
-    name: "basecasts",
-    deployment: "cluster",
-    clusterNodes:
-      "clustercfg.memdb.example.test:6379,redis-2.example.test:6380",
-    username: "pdeng",
-    password: "secret",
-    tls: true,
-  });
+  const config = normalizeQueueConfig(
+    {
+      name: "basecasts",
+      deployment: "cluster",
+      clusterNodes:
+        "clustercfg.memdb.example.test:6379,redis-2.example.test:6380",
+      username: "pdeng",
+      tls: true,
+    },
+    { password: "secret" },
+  );
 
   const descriptor = buildRedisDescriptor(config, "producer");
   assert.equal(descriptor.kind, "cluster");
@@ -103,19 +109,20 @@ test("rejects a Cluster prefix without a Redis hash tag", () => {
 });
 
 test("builds Sentinel descriptors with separate Sentinel auth and TLS", () => {
-  const config = normalizeQueueConfig({
-    name: "sentinel-queue",
-    deployment: "sentinel",
-    sentinels: "sentinel-1.example.test:26379\nsentinel-2.example.test:26379",
-    sentinelMasterName: "mymaster",
-    username: "data-user",
-    password: "data-secret",
-    sentinelUsername: "sentinel-user",
-    sentinelPassword: "sentinel-secret",
-    tls: true,
-    tlsRejectUnauthorized: false,
-    sentinelTls: true,
-  });
+  const config = normalizeQueueConfig(
+    {
+      name: "sentinel-queue",
+      deployment: "sentinel",
+      sentinels: "sentinel-1.example.test:26379\nsentinel-2.example.test:26379",
+      sentinelMasterName: "mymaster",
+      username: "data-user",
+      sentinelUsername: "sentinel-user",
+      tls: true,
+      tlsRejectUnauthorized: false,
+      sentinelTls: true,
+    },
+    { password: "data-secret", sentinelPassword: "sentinel-secret" },
+  );
 
   const descriptor = buildRedisDescriptor(config, "worker");
   assert.equal(descriptor.kind, "single");
@@ -136,6 +143,21 @@ test("builds Sentinel descriptors with separate Sentinel auth and TLS", () => {
     rejectUnauthorized: false,
   });
   assert.equal(descriptor.options.maxRetriesPerRequest, null);
+});
+
+test("rejects removed config aliases and plaintext secrets", () => {
+  assert.throws(
+    () => normalizeQueueConfig({ name: "queue", deployment: "memorydb" }),
+    /Unsupported Redis deployment mode/,
+  );
+  assert.throws(
+    () => normalizeQueueConfig({ name: "queue", password: "plaintext" }),
+    /must be stored in Node-RED credentials/,
+  );
+  assert.throws(
+    () => normalizeQueueConfig({ name: "queue", mode: "cluster" }),
+    /Unsupported config field: mode/,
+  );
 });
 
 test("parses endpoint lists from strings and arrays", () => {

@@ -16,7 +16,7 @@ The BullMQ prefix must contain a Redis hash tag, normally `{bull}`. Untagged Clu
 
 ## AWS MemoryDB
 
-Use deployment `cluster`. The legacy `memorydb` deployment value remains a compatibility alias for `cluster` in imported flows.
+Use deployment `cluster`.
 
 Typical settings:
 
@@ -61,4 +61,4 @@ Disable verification only when the Redis deployment cannot be configured with a 
 
 ## Secrets And Imported Flows
 
-Passwords, CA data, client certificates, and private keys are stored in Node-RED credentials. Plaintext config fields remain a migration-only fallback for older imported flows; edit and redeploy those config nodes so secrets move into the credential store.
+Passwords, CA data, client certificates, and private keys are read only from Node-RED credentials.

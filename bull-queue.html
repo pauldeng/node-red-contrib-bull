@@ -1,4 +1,4 @@
-<script type="text/html" data-template-name="bull-queue-server">
+<script type="text/html" data-template-name="bullmq-queue-server">
   <div class="form-row">
     <label for="node-config-input-name"><i class="fa fa-tasks"></i> Queue</label>
     <input type="text" id="node-config-input-name" placeholder="email-jobs">
@@ -114,7 +114,7 @@
       $(".bull-telemetry-row").toggle($("#node-config-input-telemetry").is(":checked"));
     }
 
-    RED.nodes.registerType("bull-queue-server", {
+    RED.nodes.registerType("bullmq-queue-server", {
       category: "config",
       defaults: {
         name: { value: "", required: true },
@@ -156,7 +156,7 @@
   })();
 </script>
 
-<script type="text/html" data-help-name="bull-queue-server">
+<script type="text/html" data-help-name="bullmq-queue-server">
   <p>Configures the BullMQ queue name and Redis connection shared by the BullMQ nodes.</p>
   <p>API reference: <a href="https://docs.bullmq.io/api/classes/v6.Queue.html" target="_blank" rel="noopener noreferrer">Queue</a> and <a href="https://docs.bullmq.io/api/interfaces/v6.QueueOptions.html" target="_blank" rel="noopener noreferrer">QueueOptions</a>.</p>
 
@@ -184,7 +184,7 @@
     <li><b>Prefix</b>: BullMQ key prefix. Redis Cluster and MemoryDB prefixes must contain a hash tag such as <code>{bull}</code> so BullMQ keys stay in one hash slot for atomic operations.</li>
     <li><b>Telemetry</b>: Enables OpenTelemetry tracing for this queue's <code>Queue</code>, <code>Worker</code>, and <code>FlowProducer</code> instances using <a href="https://www.npmjs.com/package/bullmq-otel" target="_blank" rel="noopener noreferrer">bullmq-otel</a>. Off by default. <code>bullmq-otel</code> is an optional dependency and must be installed separately (<code>npm install bullmq-otel</code>) before enabling this switch. This node does not start or configure an OpenTelemetry SDK or exporter; the host Node-RED process owns that (for example NODE_OPTIONS auto-instrumentation, or an SDK bootstrapped from Node-RED's <code>settings.js</code>). When no OpenTelemetry provider is registered, <code>bullmq-otel</code> simply no-ops rather than erroring.</li>
     <li><b>Service Name</b>: Tracer and meter name reported to OpenTelemetry. Leave blank to use the <b>Queue</b> name.</li>
-    <li><b>Metrics</b>: Enables OpenTelemetry metrics in addition to tracing. A <code>MeterProvider</code> must be registered with the host process before this queue is first used, otherwise metrics are dropped. For metrics scraping without any OpenTelemetry stack, the <code>bull cmd</code> node's <code>msg.cmd</code> <code>exportPrometheusMetrics</code> is a zero-dependency alternative.</li>
+    <li><b>Metrics</b>: Enables OpenTelemetry metrics in addition to tracing. A <code>MeterProvider</code> must be registered with the host process before this queue is first used, otherwise metrics are dropped. For metrics scraping without any OpenTelemetry stack, the <code>bullmq cmd</code> node's <code>msg.cmd</code> <code>exportPrometheusMetrics</code> is a zero-dependency alternative.</li>
   </ul>
 
   <h3>Example</h3>
@@ -193,7 +193,7 @@
   <p>Redis should use <code>maxmemory-policy=noeviction</code>. Bull v4 Redis queue data is not automatically migrated to BullMQ.</p>
 </script>
 
-<script type="text/html" data-template-name="bull cmd">
+<script type="text/html" data-template-name="bullmq cmd">
   <div class="form-row">
     <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
     <input type="text" id="node-input-name">
@@ -204,7 +204,7 @@
   </div>
 </script>
 
-<script type="text/html" data-help-name="bull cmd">
+<script type="text/html" data-help-name="bullmq cmd">
   <p>Executes BullMQ producer and queue-administration commands from an input message.</p>
   <p>API reference: <a href="https://docs.bullmq.io/api/classes/v6.Queue.html" target="_blank" rel="noopener noreferrer">Queue</a>, <a href="https://docs.bullmq.io/api/classes/v6.Queue.html#add" target="_blank" rel="noopener noreferrer">Queue.add</a>, <a href="https://docs.bullmq.io/api/types/v6.JobsOptions.html" target="_blank" rel="noopener noreferrer">JobsOptions</a>, <a href="https://docs.bullmq.io/api/types/v6.DeduplicationOptions.html" target="_blank" rel="noopener noreferrer">DeduplicationOptions</a>, <a href="https://docs.bullmq.io/api/classes/v6.Queue.html#setglobalratelimit" target="_blank" rel="noopener noreferrer">Queue.setGlobalRateLimit</a>, and <a href="https://docs.bullmq.io/api/classes/v6.Queue.html#upsertjobscheduler" target="_blank" rel="noopener noreferrer">Queue.upsertJobScheduler</a>.</p>
 
@@ -220,7 +220,7 @@
     <li><code>msg.payload</code>: Job data for <code>add</code> when <code>msg.jobData</code> is not set. For some commands it carries command parameters, such as <code>{ "max": 2, "duration": 1000 }</code> for <code>setGlobalRateLimit</code>. <code>isPaused</code> and <code>isMaxed</code> return a boolean; <code>getVersion</code> returns BullMQ's queue metadata version string (for example <code>bullmq:6.2.1</code>), not the Redis server version.</li>
     <li><code>msg.jobName</code>: BullMQ job name for <code>add</code>. Defaults to <code>default</code>.</li>
     <li><code>msg.jobData</code>: Full job data object for <code>add</code>. When set, it takes precedence over <code>msg.payload</code>.</li>
-    <li><code>msg.jobopts</code>: BullMQ job options for <code>add</code>, including <code>delay</code>, <code>priority</code>, <code>deduplication</code>, <code>attempts</code>, <code>backoff</code>, <code>removeOnComplete</code>, and <code>repeat</code>.</li>
+    <li><code>msg.jobopts</code>: BullMQ job options for <code>add</code>, including <code>delay</code>, <code>priority</code>, <code>deduplication</code>, <code>attempts</code>, <code>backoff</code>, and <code>removeOnComplete</code>. Repeat options are rejected; use <code>upsertJobScheduler</code>.</li>
   </ul>
 
   <h3>Examples</h3>
@@ -233,6 +233,14 @@ msg.jobopts = {
   priority: 1,
   removeOnComplete: true
 };
+return msg;</pre>
+  <p>Add three one-off jobs that become eligible after 10, 20, and 30 seconds:</p>
+  <pre>msg.cmd = "addBulk";
+msg.payload = [
+  { name: "delayed-1", data: { payload: "first" }, opts: { delay: 10000 } },
+  { name: "delayed-2", data: { payload: "second" }, opts: { delay: 20000 } },
+  { name: "delayed-3", data: { payload: "third" }, opts: { delay: 30000 } }
+];
 return msg;</pre>
   <p>Add one job per deduplication id:</p>
   <pre>msg.cmd = "add";
@@ -247,38 +255,37 @@ return msg;</pre>
 msg.payload = { max: 2, duration: 1000 };
 return msg;</pre>
   <p>Add or update a scheduler every minute:</p>
-  <pre>msg.cmd = "add";
-msg.jobName = "heartbeat";
-msg.payload = "scheduled heartbeat";
-msg.jobopts = {
-  jobId: "heartbeat-every-minute",
-  repeat: { pattern: "*/1 * * * *" }
+  <pre>msg.cmd = "upsertJobScheduler";
+msg.schedulerId = "heartbeat-every-minute";
+msg.repeat = { pattern: "*/1 * * * *" };
+msg.template = {
+  name: "heartbeat",
+  data: { payload: "scheduled heartbeat" }
 };
 return msg;</pre>
-  <p>Legacy <code>msg.jobopts.repeat.cron</code> is translated to a BullMQ Job Scheduler. Legacy repeat lookup and removal commands use exact scheduler ids.</p>
-  <p>BullMQ v6 removed its own repeatable-job API. This node keeps <code>getRepeatableJobs</code>, <code>removeRepeatableByKey</code>, <code>getRepeatableJobByKey</code>, and <code>count</code> working as this package's own aliases onto Job Schedulers (<code>getJobSchedulers</code>, <code>removeJobScheduler</code>, <code>getJobScheduler</code>, and <code>getJobSchedulersCount</code>).</p>
+  <p>Job Scheduler commands use the native BullMQ v6 fields: <code>msg.schedulerId</code>, <code>msg.repeat.pattern</code>, optional <code>msg.repeat.tz</code>, and <code>msg.template</code>.</p>
   <p>BullMQ v6 removed the <code>paused</code> job state, so <code>getJobCounts</code> no longer includes a <code>paused</code> key in its result.</p>
 </script>
 
 <script type="text/javascript">
-  RED.nodes.registerType("bull cmd", {
+  RED.nodes.registerType("bullmq cmd", {
     color: "#ffffff",
     category: "function",
     defaults: {
       name: { value: "" },
-      queue: { type: "bull-queue-server", required: true }
+      queue: { type: "bullmq-queue-server", required: true }
     },
     inputs: 1,
     outputs: 1,
     align: "right",
     icon: "bull_icon.png",
     label: function() {
-      return this.name || "bull cmd";
+      return this.name || "bullmq cmd";
     }
   });
 </script>
 
-<script type="text/html" data-template-name="bull run">
+<script type="text/html" data-template-name="bullmq run">
   <div class="form-row">
     <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
     <input type="text" id="node-input-name">
@@ -312,7 +319,7 @@ return msg;</pre>
   </div>
 </script>
 
-<script type="text/html" data-help-name="bull run">
+<script type="text/html" data-help-name="bullmq run">
   <p>Creates a BullMQ Worker for the configured queue and emits each job as a Node-RED message.</p>
   <p>API reference: <a href="https://docs.bullmq.io/api/classes/v6.Worker.html" target="_blank" rel="noopener noreferrer">Worker</a> and <a href="https://docs.bullmq.io/api/interfaces/v6.WorkerOptions.html" target="_blank" rel="noopener noreferrer">WorkerOptions</a>.</p>
 
@@ -320,7 +327,7 @@ return msg;</pre>
   <ul>
     <li><b>Name</b>: Optional label shown in the Node-RED workspace.</li>
     <li><b>Queue</b>: Queue config node used by the worker.</li>
-    <li><b>Completion</b>: <code>Immediate</code> completes the BullMQ job after the message is emitted. <code>Manual acknowledgement</code> keeps the job active until a downstream <code>bull job</code> node completes, fails, or updates it.</li>
+    <li><b>Completion</b>: <code>Immediate</code> completes the BullMQ job after the message is emitted. <code>Manual acknowledgement</code> keeps the job active until a downstream <code>bullmq job</code> node completes, fails, or updates it.</li>
     <li><b>Ack Timeout</b>: Maximum time in milliseconds to wait for manual acknowledgement before the node fails the active job. Set to <code>0</code> to wait indefinitely.</li>
     <li><b>Concurrency</b>: Number of jobs this worker can process at the same time.</li>
     <li><b>Limiter Max</b>: Optional worker-side rate limit count.</li>
@@ -331,15 +338,15 @@ return msg;</pre>
   <ul>
     <li><code>msg.payload</code>: <code>job.data.payload</code> when present, otherwise the full BullMQ job data.</li>
     <li><code>msg.job</code>: Serialized job metadata, including id, name, queue name, state-related timestamps, progress, attempts, and options.</li>
-    <li><code>msg.bull</code>: Queue and acknowledgement context used by downstream <code>bull job</code> nodes.</li>
+    <li><code>msg.bull</code>: Queue and acknowledgement context used by downstream <code>bullmq job</code> nodes.</li>
   </ul>
 
   <p>BullMQ v6 removed the <code>paused</code> job state: <code>job.getState()</code> never returns <code>"paused"</code>, so a job on a paused queue reports as <code>"waiting"</code>.</p>
-  <p>Only jobs from a <b>Completion</b> <code>Manual acknowledgement</code> worker can be cancelled through <code>bull job</code>'s <code>cancelJob</code> and <code>cancelAllJobs</code> actions, since cancellation is scoped to <code>msg.bull.ackId</code>.</p>
+  <p>Only jobs from a <b>Completion</b> <code>Manual acknowledgement</code> worker can be cancelled through <code>bullmq job</code>'s <code>cancelJob</code> and <code>cancelAllJobs</code> actions, since cancellation is scoped to <code>msg.bull.ackId</code>.</p>
 
   <h3>Example</h3>
   <p>For fire-and-forget processing, use <b>Completion</b> <code>Immediate</code> and wire the output to your processing flow.</p>
-  <p>For a flow that must decide success or failure, use <b>Completion</b> <code>Manual acknowledgement</code>, wire the output to processing nodes, then wire into <code>bull job</code> with <b>Action</b> <code>complete</code> or <code>fail</code>.</p>
+  <p>For a flow that must decide success or failure, use <b>Completion</b> <code>Manual acknowledgement</code>, wire the output to processing nodes, then wire into <code>bullmq job</code> with <b>Action</b> <code>complete</code> or <code>fail</code>.</p>
 </script>
 
 <script type="text/javascript">
@@ -364,12 +371,12 @@ return msg;</pre>
       );
     }
 
-    RED.nodes.registerType("bull run", {
+    RED.nodes.registerType("bullmq run", {
       color: "#ffffff",
       category: "function",
       defaults: {
         name: { value: "" },
-        queue: { type: "bull-queue-server", required: true },
+        queue: { type: "bullmq-queue-server", required: true },
         completionMode: { value: "immediate" },
         ackTimeout: { value: 300000, validate: RED.validators.number() },
         concurrency: { value: 1, validate: positiveInteger },
@@ -391,7 +398,7 @@ return msg;</pre>
       align: "left",
       icon: "bull_icon.png",
       label: function() {
-        return this.name || "bull run";
+        return this.name || "bullmq run";
       },
       oneditprepare: function() {
         $("#node-input-completionMode").on("change", updateBullRunRows);
@@ -401,7 +408,7 @@ return msg;</pre>
   })();
 </script>
 
-<script type="text/html" data-template-name="bull job">
+<script type="text/html" data-template-name="bullmq job">
   <div class="form-row">
     <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
     <input type="text" id="node-input-name">
@@ -424,8 +431,8 @@ return msg;</pre>
   </div>
 </script>
 
-<script type="text/html" data-help-name="bull job">
-  <p>Acts on an active job emitted by a manual-mode <code>bull run</code> node.</p>
+<script type="text/html" data-help-name="bullmq job">
+  <p>Acts on an active job emitted by a manual-mode <code>bullmq run</code> node.</p>
   <p>API reference: <a href="https://docs.bullmq.io/api/classes/v6.Job.html" target="_blank" rel="noopener noreferrer">Job</a>, <a href="https://docs.bullmq.io/api/classes/v6.UnrecoverableError.html" target="_blank" rel="noopener noreferrer">UnrecoverableError</a>, and <a href="https://docs.bullmq.io/api/classes/v6.Worker.html#canceljob" target="_blank" rel="noopener noreferrer">Worker.cancelJob</a>.</p>
 
   <h3>Options</h3>
@@ -446,7 +453,7 @@ return msg;</pre>
     <li><code>getFailedChildrenValues</code>: Reads failed child values for a flow parent job.</li>
     <li><code>removeUnprocessedChildren</code>: Removes children that have not yet been processed.</li>
     <li><code>cancelJob</code>: Cancels the active job by aborting its processor signal, which fails the job and lets the queue's normal attempts/backoff retry policy apply. Acknowledgement-scoped: it needs <code>msg.bull.ackId</code>, so it only reaches manual-completion jobs that have not yet settled. <code>msg.reason</code> sets the cancellation reason, default <code>"BullMQ job cancelled"</code>. Outputs <code>true</code> on <code>msg.payload</code>; if BullMQ reports no cancellable processor for the job, the node raises an error instead.</li>
-    <li><code>cancelAllJobs</code>: Cancels every active manual job on the same <code>bull run</code> node the same way as <code>cancelJob</code>. <code>msg.reason</code> sets the cancellation reason, default <code>"BullMQ job cancelled"</code>. Outputs <code>true</code> on <code>msg.payload</code>.</li>
+    <li><code>cancelAllJobs</code>: Cancels every active manual job on the same <code>bullmq run</code> node the same way as <code>cancelJob</code>. <code>msg.reason</code> sets the cancellation reason, default <code>"BullMQ job cancelled"</code>. Outputs <code>true</code> on <code>msg.payload</code>.</li>
   </ul>
 
   <h3>Example</h3>
@@ -454,7 +461,7 @@ return msg;</pre>
   <pre>msg.cmd = "progress";
 msg.progress = 50;
 return msg;</pre>
-  <p>To use another <code>bull job</code> node with configured <b>Action</b> <code>complete</code>, pass the progress output through a Function node that removes the per-message override:</p>
+  <p>To use another <code>bullmq job</code> node with configured <b>Action</b> <code>complete</code>, pass the progress output through a Function node that removes the per-message override:</p>
   <pre>delete msg.cmd;
 msg.payload = { ok: true };
 return msg;</pre>
@@ -462,11 +469,11 @@ return msg;</pre>
   <pre>msg.cmd = "complete";
 msg.payload = { ok: true };
 return msg;</pre>
-  <p>The node uses the opaque <code>msg.bull.ackId</code> from <code>bull run</code> and does not expose BullMQ lock tokens.</p>
+  <p>The node uses the opaque <code>msg.bull.ackId</code> from <code>bullmq run</code> and does not expose BullMQ lock tokens.</p>
 </script>
 
 <script type="text/javascript">
-  RED.nodes.registerType("bull job", {
+  RED.nodes.registerType("bullmq job", {
     color: "#ffffff",
     category: "function",
     defaults: {
@@ -478,12 +485,12 @@ return msg;</pre>
     align: "right",
     icon: "bull_icon.png",
     label: function() {
-      return this.name || "bull job";
+      return this.name || "bullmq job";
     }
   });
 </script>
 
-<script type="text/html" data-template-name="bull events">
+<script type="text/html" data-template-name="bullmq events">
   <div class="form-row">
     <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
     <input type="text" id="node-input-name">
@@ -498,7 +505,7 @@ return msg;</pre>
   </div>
 </script>
 
-<script type="text/html" data-help-name="bull events">
+<script type="text/html" data-help-name="bullmq events">
   <p>Subscribes to BullMQ QueueEvents and emits global queue events as Node-RED messages.</p>
   <p>API reference: <a href="https://docs.bullmq.io/api/classes/v6.QueueEvents.html" target="_blank" rel="noopener noreferrer">QueueEvents</a>.</p>
 
@@ -522,12 +529,12 @@ return msg;</pre>
 </script>
 
 <script type="text/javascript">
-  RED.nodes.registerType("bull events", {
+  RED.nodes.registerType("bullmq events", {
     color: "#ffffff",
     category: "function",
     defaults: {
       name: { value: "" },
-      queue: { type: "bull-queue-server", required: true },
+      queue: { type: "bullmq-queue-server", required: true },
       events: { value: "" }
     },
     inputs: 0,
@@ -535,12 +542,12 @@ return msg;</pre>
     align: "left",
     icon: "bull_icon.png",
     label: function() {
-      return this.name || "bull events";
+      return this.name || "bullmq events";
     }
   });
 </script>
 
-<script type="text/html" data-template-name="bull flow">
+<script type="text/html" data-template-name="bullmq flow">
   <div class="form-row">
     <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
     <input type="text" id="node-input-name">
@@ -551,7 +558,7 @@ return msg;</pre>
   </div>
 </script>
 
-<script type="text/html" data-help-name="bull flow">
+<script type="text/html" data-help-name="bullmq flow">
   <p>Adds atomic BullMQ parent and child job trees with <code>FlowProducer</code>.</p>
   <p>API reference: <a href="https://docs.bullmq.io/api/classes/v6.FlowProducer.html" target="_blank" rel="noopener noreferrer">FlowProducer</a> and <a href="https://docs.bullmq.io/api/types/v6.FlowJob.html" target="_blank" rel="noopener noreferrer">FlowJob</a>.</p>
 
@@ -583,23 +590,23 @@ return msg;</pre>
   ]
 };
 return msg;</pre>
-  <p>The child jobs are processed before the parent job. A parent can read child results with a manual-mode <code>bull run</code> and a <code>bull job</code> action such as <code>getChildrenValues</code>.</p>
+  <p>The child jobs are processed before the parent job. A parent can read child results with a manual-mode <code>bullmq run</code> and a <code>bullmq job</code> action such as <code>getChildrenValues</code>.</p>
 </script>
 
 <script type="text/javascript">
-  RED.nodes.registerType("bull flow", {
+  RED.nodes.registerType("bullmq flow", {
     color: "#ffffff",
     category: "function",
     defaults: {
       name: { value: "" },
-      queue: { type: "bull-queue-server", required: true }
+      queue: { type: "bullmq-queue-server", required: true }
     },
     inputs: 1,
     outputs: 1,
     align: "right",
     icon: "bull_icon.png",
     label: function() {
-      return this.name || "bull flow";
+      return this.name || "bullmq flow";
     }
   });
 </script>

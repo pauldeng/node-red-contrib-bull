@@ -1,63 +1,71 @@
 # Migration Guide
 
-## From Bull v4
+Package 2.0.0 is a breaking BullMQ v6 release. It does not register the old Bull node types or accept the old command, job-id, or repeatable-job aliases. Existing Bull v4 and BullMQ v5 queue data is not migrated.
 
-### What Stays Compatible
+## Before Upgrading
 
-- Node types `bull-queue-server`, `bull cmd`, and `bull run`.
-- Message-driven `msg.cmd` command dispatch.
-- `msg.payload` compatibility for added jobs and worker output.
-- `msg.jobopts.repeat.cron` for scheduled jobs.
+- Drain or otherwise account for Bull v4 jobs.
+- While still running the previous BullMQ package version, remove its repeatable-job definitions.
+- Export flows before changing node types and message shapes.
 
-### What Changes
+Bull and BullMQ do not provide a supported Redis data migration contract. Do not assume existing delayed, waiting, active, completed, or repeatable keys are usable after this upgrade.
 
-- Runtime dependency is BullMQ 6.2.1.
-- `bull` and `sprintf-js` are removed.
-- Repeatable jobs use BullMQ Job Schedulers.
-- Scheduled jobs require a stable scheduler id.
-- `bull run` uses BullMQ Worker instead of Bull v4 `queue.process`.
+## Flow Changes
 
-### Repeat Jobs
+Rename every node type:
 
-Legacy:
+| Old type            | BullMQ v6 type        |
+| ------------------- | --------------------- |
+| `bull-queue-server` | `bullmq-queue-server` |
+| `bull cmd`          | `bullmq cmd`          |
+| `bull run`          | `bullmq run`          |
+| `bull job`          | `bullmq job`          |
+| `bull events`       | `bullmq events`       |
+| `bull flow`         | `bullmq flow`         |
+
+Replace `msg.command` with `msg.cmd` and `msg.jobid` with `msg.jobId`; the removed fields now produce explicit errors. Removed repeatable aliases have these native replacements:
+
+| Removed command          | BullMQ v6 command       |
+| ------------------------ | ----------------------- |
+| `getRepeatableJobs`      | `getJobSchedulers`      |
+| `count`                  | `getJobSchedulersCount` |
+| `getRepeatableJobByKey`  | `getJobScheduler`       |
+| `removeRepeatableByKey`  | `removeJobScheduler`    |
+| `add` with `opts.repeat` | `upsertJobScheduler`    |
+
+Job Scheduler lookup and removal require the exact id in `msg.schedulerId`.
+
+## Scheduler Shape
+
+Replace the old repeat shape:
 
 ```js
+msg.cmd = "add";
 msg.jobopts = {
-  jobId: msg.payload,
-  repeat: { cron: "30 9,19,29,39,49,59 * * * *" },
+  jobId: "heartbeat",
+  repeat: { cron: "*/1 * * * *", utc: true },
 };
 ```
 
-Runtime translation:
+with BullMQ v6 inputs:
 
-- scheduler id: `msg.schedulerId` or `msg.jobopts.jobId`;
-- repeat pattern: `msg.jobopts.repeat.pattern`;
-- template data: `msg.jobData` or `{ payload: msg.payload }`.
+```js
+msg.cmd = "upsertJobScheduler";
+msg.schedulerId = "heartbeat";
+msg.repeat = { pattern: "*/1 * * * *", tz: "UTC" };
+msg.template = {
+  name: "heartbeat",
+  data: { payload: "scheduled heartbeat" },
+};
+```
 
-### Data Migration
+Use `pattern`, not `cron`, and `tz`, not `utc`.
 
-Bull v4 and BullMQ do not provide a supported Redis data migration contract. Do not assume existing delayed, waiting, active, completed, or repeatable Bull v4 keys will be usable by BullMQ.
+## Other BullMQ v6 Changes
 
-## From BullMQ v5 To v6 (Package 2.0.0)
+- `job.getState()` no longer returns `paused`; jobs in a paused queue report `waiting`. Use `isPaused` for the queue state.
+- `getJobCounts` no longer includes a `paused` key.
+- Flow children without an explicit `opts.jobId` receive UUIDs rather than incremental numeric ids.
+- The default event filter includes `retries-exhausted`.
 
-BullMQ 6.2.1 (this package's 2.0.0) removes and changes behavior this package previously depended on. Each item below is a real behavior change, not just a version bump.
-
-### Legacy Repeatable-Job API Removed From BullMQ Itself
-
-BullMQ v6 deletes `Queue.getRepeatableJobs`, `Queue.removeRepeatableByKey`, and the rest of its own legacy repeatable-job methods. This package's `msg.cmd` names `getRepeatableJobs`, `getRepeatableJobByKey`, `removeRepeatableByKey`, and `count` are this package's own aliases onto Job Schedulers (`lib/commands.js`), not passthroughs to BullMQ's methods, so **they keep working unchanged**. Nothing to do here — but if you know BullMQ v6 removed these, do not assume this package removed them too.
-
-### `paused` Job State Removed
-
-`job.getState()` never returns `"paused"` any more; a job sitting in a paused queue now reports `"waiting"`. `queue.getJobCounts()` no longer includes a `paused` key in its result (`getJobState`/`getJobCounts` in `docs/COMMANDS.md`). If a flow branches on `getJobState` returning `"paused"`, or reads `msg.payload.paused` from `getJobCounts`, change it to check `isPaused` (new in this release; see `docs/COMMANDS.md`) instead.
-
-### `bull flow` Child Jobs Get UUID Ids By Default
-
-A `bull flow` child job that does not set an explicit `opts.jobId` now gets a UUID instead of an incremental numeric id. If downstream code assumed sequential numeric child ids, set `opts.jobId` explicitly on each child in `msg.payload`.
-
-### `repeat.utc` Is Gone; Use `repeat.tz`
-
-BullMQ v6 dropped `repeat.utc` in favor of `repeat.tz`. This package still accepts a legacy `repeat.utc: true` and translates it to `repeat.tz: "UTC"`; combining a truthy `utc` with a `tz` other than `"UTC"` throws instead of picking one silently. A falsy `repeat.utc` is simply dropped, since it never meant anything but "use local time". New flows should set `repeat.tz` directly and drop `repeat.utc`.
-
-### v5 Repeatable-Job Data Is Not Migrated
-
-BullMQ v5's repeatable-job Redis data is **not** migrated by upgrading this package. Before upgrading, remove every v5 repeatable-job definition (drain them with the `stopAndRemoveAllJobs` command, or remove each one individually) while still running the BullMQ v5 version, then recreate the schedules after upgrading. This package does not inventory or convert old repeatable-job keys for you.
+After updating flows, run them against a non-production Redis deployment before upgrading production.

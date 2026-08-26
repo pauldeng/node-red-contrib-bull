@@ -1,6 +1,6 @@
 # Agent Guide
 
-BullMQ-backed Redis job queue nodes for Node-RED, migrated from Bull v4 with the legacy node types kept working.
+BullMQ v6-backed Redis job queue nodes for Node-RED. Version 2 is a breaking API with no Bull v4 or BullMQ v5 compatibility aliases.
 
 ## Before Any Change
 
@@ -27,6 +27,6 @@ Both gate CI on every pull request, so treat them as the floor for any change. E
 | Redis options, TLS, cluster, sentinel    | `docs/CONNECTIONS.md`     |
 | OpenTelemetry tracing and metrics        | `docs/TELEMETRY.md`       |
 | tests and verification                   | `docs/TESTING.md`         |
-| Bull v4 compatibility                    | `docs/MIGRATION.md`       |
+| upgrading from older package versions    | `docs/MIGRATION.md`       |
 | a reported failure                       | `docs/TROUBLESHOOTING.md` |
 | publishing                               | `docs/RELEASE.md`         |

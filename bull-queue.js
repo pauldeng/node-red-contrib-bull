@@ -86,21 +86,10 @@ async function forceDisconnect(resource) {
     disconnectClient(resource);
     return;
   }
-  // BullMQ resource (Queue/QueueEvents/Worker/FlowProducer): force disconnect
-  // through the public API, which delegates to the backend's connections.
-  if (typeof resource.disconnect !== "function") {
-    return;
-  }
-  if ((await settleWithin(resource.disconnect(), CLOSE_GRACE_MS)) !== "timeout") {
-    return;
-  }
-  // Measured on installed BullMQ 6.2.1: disconnect() awaits the same
-  // connection-ready promise as close(), which never settles while Redis is
-  // unreachable (ioredis retries the connection forever, so it never reaches
-  // 'ready' or 'end'). The public API alone cannot interrupt that retry loop,
-  // so as a last resort reach the backend's raw ioredis clients and kill the
-  // sockets directly -- otherwise the reconnect timers keep the process alive
-  // forever and Node-RED can never exit.
+  // BullMQ 6.2.1's public disconnect() can await the same never-ready promise
+  // as close(), which would spend a second shutdown budget after the first one
+  // already expired. The exact BullMQ pin makes this one backend escape hatch
+  // deliberate and testable until upstream disconnect becomes bounded.
   if (typeof resource.getBackend !== "function") {
     return;
   }
@@ -349,7 +338,7 @@ module.exports = function registerBullMQNodes(RED) {
       return node.queue;
     };
 
-    // The producer connection backs the shared queue used by bull cmd nodes;
+    // The producer connection backs the shared queue used by bullmq cmd nodes;
     // exposing it lets those nodes mirror the real connection state.
     node.getProducerConnection = function getProducerConnection() {
       node.getQueue();
@@ -405,7 +394,7 @@ module.exports = function registerBullMQNodes(RED) {
     });
   }
 
-  RED.nodes.registerType("bull-queue-server", BullQueueServerSetup, {
+  RED.nodes.registerType("bullmq-queue-server", BullQueueServerSetup, {
     credentials: {
       password: { type: "password" },
       sentinelPassword: { type: "password" },
@@ -423,7 +412,7 @@ module.exports = function registerBullMQNodes(RED) {
 
     if (!node.bullConn) {
       node.status({ fill: "red", shape: "ring", text: "missing queue" });
-      node.error("Missing bull-queue-server config node");
+      node.error("Missing bullmq-queue-server config node");
       return;
     }
 
@@ -474,7 +463,7 @@ module.exports = function registerBullMQNodes(RED) {
 
     if (!node.bullQueue) {
       node.status({ fill: "red", shape: "ring", text: "missing queue" });
-      node.error("Missing bull-queue-server config node");
+      node.error("Missing bullmq-queue-server config node");
       return;
     }
 
@@ -643,7 +632,7 @@ module.exports = function registerBullMQNodes(RED) {
             return;
           }
           default:
-            throw new Error(`Unsupported bull job action: ${action}`);
+            throw new Error(`Unsupported bullmq job action: ${action}`);
         }
       } catch (err) {
         nodeDone(node, done, err, msg);
@@ -659,7 +648,7 @@ module.exports = function registerBullMQNodes(RED) {
 
     if (!node.bullConn) {
       node.status({ fill: "red", shape: "ring", text: "missing queue" });
-      node.error("Missing bull-queue-server config node");
+      node.error("Missing bullmq-queue-server config node");
       return;
     }
 
@@ -711,7 +700,7 @@ module.exports = function registerBullMQNodes(RED) {
 
     if (!node.bullConn) {
       node.status({ fill: "red", shape: "ring", text: "missing queue" });
-      node.error("Missing bull-queue-server config node");
+      node.error("Missing bullmq-queue-server config node");
       return;
     }
 
@@ -733,7 +722,7 @@ module.exports = function registerBullMQNodes(RED) {
     node.on("input", async function onInput(msg, send, done) {
       try {
         if (!msg.payload || typeof msg.payload !== "object") {
-          throw new Error("bull flow requires msg.payload to contain a flow tree");
+          throw new Error("bullmq flow requires msg.payload to contain a flow tree");
         }
         msg.payload = serializeFlowJob(
           await node.flowProducer.add(msg.payload, msg.flowopts)
@@ -756,9 +745,9 @@ module.exports = function registerBullMQNodes(RED) {
     });
   }
 
-  RED.nodes.registerType("bull cmd", BullQueueCmdNode);
-  RED.nodes.registerType("bull run", BullQueueRunNode);
-  RED.nodes.registerType("bull job", BullJobNode);
-  RED.nodes.registerType("bull events", BullEventsNode);
-  RED.nodes.registerType("bull flow", BullFlowNode);
+  RED.nodes.registerType("bullmq cmd", BullQueueCmdNode);
+  RED.nodes.registerType("bullmq run", BullQueueRunNode);
+  RED.nodes.registerType("bullmq job", BullJobNode);
+  RED.nodes.registerType("bullmq events", BullEventsNode);
+  RED.nodes.registerType("bullmq flow", BullFlowNode);
 };
