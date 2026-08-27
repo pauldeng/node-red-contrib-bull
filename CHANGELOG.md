@@ -4,7 +4,7 @@ All notable changes to this package are documented here.
 
 ## 2.0.0 - 2026-08-26
 
-- Upgraded to BullMQ 6.2.1 (from 5.80.9); ioredis stays pinned at 5.11.1. Persisted BullMQ v5 repeatable-job data is not migrated to v6 -- remove it before upgrading. See docs/MIGRATION.md.
+- Upgraded to BullMQ 6.3.1 (from 5.80.9); ioredis stays pinned at 5.11.1. Persisted BullMQ v5 repeatable-job data is not migrated to v6 -- remove it before upgrading. See docs/MIGRATION.md.
 - Raised the runtime floor to Node.js 22.9+ and Node-RED 5.x, dropping Node.js 18/20 and Node-RED 4.1.x support.
 - Breaking: replaced all `bull*` node type names with `bullmq*` names; old flow types are not registered.
 - Breaking: removed `msg.command`, `msg.jobid`, plaintext credential fallbacks, and the `memorydb` deployment alias.

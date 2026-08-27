@@ -40,9 +40,9 @@ test("package metadata targets BullMQ, Node.js 22.9+, and Node-RED 5.x", () => {
 
   assert.equal(packageJson.dependencies?.bull, undefined);
   assert.equal(packageJson.dependencies?.["sprintf-js"], undefined);
-  assert.equal(packageJson.dependencies?.bullmq, "6.2.1");
+  assert.equal(packageJson.dependencies?.bullmq, "6.3.1");
   assert.equal(packageJson.dependencies?.ioredis, "5.11.1");
-  assert.equal(packageLock.packages?.["node_modules/bullmq"]?.version, "6.2.1");
+  assert.equal(packageLock.packages?.["node_modules/bullmq"]?.version, "6.3.1");
   // BullMQ 6 dropped ioredis to an optional peer dependency, so nothing in
   // bullmq's own tree pins it any more. Our direct dependency is the only
   // reason a Redis client resolves at all: assert the resolved version, and

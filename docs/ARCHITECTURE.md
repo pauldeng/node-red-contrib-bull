@@ -50,7 +50,7 @@ Within that budget:
 
 Step 2 differs by backend:
 
-- **Redis**: force-disconnect the backend's raw ioredis clients (`connection._client` / `blockingConnection._client`), behind an `IQueueBackend` capability check (`typeof resource.getBackend === "function"`). This escalation is deliberately tied to the exact BullMQ 6.2.1 pin: its public `disconnect()` awaits the same never-ready connection promise as `close()`, so calling it would spend a second grace period without improving shutdown. Re-evaluate the fallback whenever the BullMQ pin changes.
+- **Redis**: force-disconnect the backend's raw ioredis clients (`connection._client` / `blockingConnection._client`), behind an `IQueueBackend` capability check (`typeof resource.getBackend === "function"`). This escalation is deliberately tied to the exact BullMQ 6.3.1 pin: its public `disconnect()` awaits the same never-ready connection promise as `close()`, so calling it would spend a second grace period without improving shutdown. Re-evaluate the fallback whenever the BullMQ pin changes.
 - **PostgreSQL**: no raw-force branch. Against a blackholed host, `PostgresConnection.close()` settles when its configured 10-second connection timeout expires; the 11-second PostgreSQL budget awaits that promise instead of returning while its socket is still active. Worker's lock-renewal and stalled-check timers remain Worker-owned and use the same cleanup path on both backends.
 
 A raw ioredis connection (not a BullMQ owner) skips straight to a force-disconnect after its own bounded `quit()`/close attempt. Every step is best-effort — one step's error does not stop the ones after it — which is what keeps Node-RED shutdown and redeploy from hanging when the datastore is unreachable.
