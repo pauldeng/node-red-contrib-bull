@@ -56,10 +56,7 @@ test("README documents BullMQ migration, supported deployments, and unsupported 
     "clear text",
     "Bull v4 Redis data is not automatically migrated",
   ]) {
-    assert.match(
-      readme,
-      new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
-    );
+    assert.ok(readme.includes(text), `must include ${text}`);
   }
 });
 
@@ -93,10 +90,7 @@ test("release documentation covers npm and Node-RED Flow Library publication", (
     "npm run test:deployments",
     "MEMORYDB_ENABLED=1",
   ]) {
-    assert.match(
-      release,
-      new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
-    );
+    assert.ok(release.includes(text), `must include ${text}`);
   }
 });
 
@@ -131,10 +125,7 @@ test("examples include simple BullMQ feature import flows", () => {
     "manual ack worker",
     "flow: parent plus child",
   ]) {
-    assert.match(
-      nodeText,
-      new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
-    );
+    assert.ok(nodeText.includes(label), `must include ${label}`);
     assert.match(readme, new RegExp(label.split(":")[0], "i"));
   }
 
@@ -151,10 +142,7 @@ test("examples include simple BullMQ feature import flows", () => {
     '"bullmq job"',
     '"bullmq flow"',
   ]) {
-    assert.match(
-      searchableText,
-      new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
-    );
+    assert.ok(searchableText.includes(text), `must include ${text}`);
   }
 });
 
@@ -178,10 +166,7 @@ test("examples include a dedicated BullMQ v6 Job Scheduler flow", () => {
     "scheduler: stopAndRemoveAllJobs",
     "scheduler: upsert with timezone",
   ]) {
-    assert.match(
-      searchableText,
-      new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
-    );
+    assert.ok(searchableText.includes(label), `must include ${label}`);
   }
 
   for (const text of [
@@ -196,10 +181,7 @@ test("examples include a dedicated BullMQ v6 Job Scheduler flow", () => {
     'msg.cmd = "getJobScheduler"',
     "gateway-FCC23DFFFE0AA2A8",
   ]) {
-    assert.match(
-      searchableText,
-      new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
-    );
+    assert.ok(searchableText.includes(text), `must include ${text}`);
   }
 
   assert.match(readme, /repeatable_jobs\.json/);
@@ -219,10 +201,7 @@ test("testing docs describe the executable Docker deployment matrix", () => {
     "sentinel-tls",
     "MEMORYDB_ENABLED=1",
   ]) {
-    assert.match(
-      testing,
-      new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
-    );
+    assert.ok(testing.includes(text), `must include ${text}`);
   }
 });
 
@@ -314,10 +293,7 @@ test("examples include scheduled and cron notification flows", () => {
     "notification worker",
     "deliver notification",
   ]) {
-    assert.match(
-      searchableText,
-      new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
-    );
+    assert.ok(searchableText.includes(label), `must include ${label}`);
   }
 
   for (const text of [
@@ -335,10 +311,7 @@ test("examples include scheduled and cron notification flows", () => {
     'tz: "UTC"',
     "msg.payload.message",
   ]) {
-    assert.match(
-      searchableText,
-      new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
-    );
+    assert.ok(searchableText.includes(text), `must include ${text}`);
   }
 
   // A shipped example that the README does not mention is one nobody finds.
@@ -458,9 +431,9 @@ test("maintained docs match current BullMQ runtime contracts", () => {
     "sentinelTls",
     "URL credentials",
   ]) {
-    assert.match(
-      connections,
-      new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"),
+    assert.ok(
+      connections.toLowerCase().includes(text.toLowerCase()),
+      `must include ${text}`,
     );
   }
   assert.match(connections, /schemes?.*agree with.*TLS/i);

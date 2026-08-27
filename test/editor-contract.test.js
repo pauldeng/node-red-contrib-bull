@@ -182,7 +182,7 @@ test("help documents every config node field", () => {
     "exportPrometheusMetrics",
     "Example",
   ]) {
-    assert.match(help, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.ok(help.includes(text), `must include ${text}`);
   }
 });
 
@@ -271,9 +271,13 @@ test("help documents runtime node fields and message examples", () => {
   for (const [type, texts] of Object.entries(expected)) {
     const help = helpBlock(type);
     for (const text of texts) {
-      assert.match(
-        help,
-        new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+      // A literal substring check, not a pattern match: building a regex here
+      // meant escaping every metacharacter back out again, and a hand-escaped
+      // hostname like docs.bullmq.io is exactly the shape CodeQL flags as an
+      // incomplete hostname regexp.
+      assert.ok(
+        help.includes(text),
+        `${type} help must mention ${JSON.stringify(text)}`,
       );
     }
   }
@@ -302,7 +306,7 @@ test("help links BullMQ API references to official API docs", () => {
   ];
 
   for (const link of expectedLinks) {
-    assert.match(html, new RegExp(link.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.ok(html.includes(link), `editor help must link ${link}`);
   }
 });
 
