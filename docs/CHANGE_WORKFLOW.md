@@ -13,7 +13,9 @@ Constraints that apply to every change live in [RULES.md](RULES.md). This file i
 
 ## Connection Changes
 
-Update [CONNECTIONS.md](CONNECTIONS.md) and `test/connections.test.js`. Run the Docker topology matrix when it is available (see [TESTING.md](TESTING.md)).
+Update [CONNECTIONS.md](CONNECTIONS.md) and `test/connections.test.js`. Run the Docker deployment matrix when it is available (see [TESTING.md](TESTING.md)); it covers the Redis topologies and both PostgreSQL fixtures.
+
+A change that touches shared connection code has to be checked on both backends, because they divide ownership differently: Redis connections are created here, PostgreSQL connections are owned by BullMQ. `test/redis-characterization.test.js` exists to catch drift in the Redis descriptors and options and must pass untouched; `npm run test:integration` runs the backend-neutral flows against both stores.
 
 ## Scheduler Changes
 

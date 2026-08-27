@@ -252,6 +252,7 @@ test("repository text does not contain MemoryDB secret assignments", () => {
     "examples/bullmq_features.json",
     "examples/repeatable_jobs.json",
     "examples/scheduled_notifications.json",
+    "examples/postgres_backend.json",
     "package.json",
   ];
 
@@ -262,6 +263,38 @@ test("repository text does not contain MemoryDB secret assignments", () => {
   for (const pattern of forbiddenPatterns) {
     assert.doesNotMatch(allText, pattern);
   }
+});
+
+test("examples include a PostgreSQL backend flow", () => {
+  const example = JSON.parse(read("examples/postgres_backend.json"));
+  const readme = read("examples/README.md");
+  const queue = example.find((node) => node.type === "bullmq-queue-server");
+
+  assert.equal(queue.backend, "postgres");
+  assert.equal(queue.database, "bullmq");
+  assert.equal(queue.migrate, true);
+  // Redis-only fields stay empty, so flipping the selector back needs no
+  // cleanup and the flow does not imply a topology PostgreSQL has no concept
+  // of.
+  for (const field of ["clusterNodes", "sentinels", "prefix", "db"]) {
+    assert.equal(queue[field], "", `${field} must be empty on a postgres flow`);
+  }
+  // A shipped flow carries no credential of any kind.
+  assert.equal(queue.address, "localhost");
+  for (const field of ["password", "tlsCa", "tlsCert", "tlsKey"]) {
+    assert.ok(!(field in queue), `a shipped flow must not carry ${field}`);
+  }
+
+  // The point of the example is that only the config node differs, so it must
+  // really contain a working producer and worker.
+  for (const type of ["bullmq cmd", "bullmq run"]) {
+    assert.ok(
+      example.some((node) => node.type === type),
+      `missing ${type}`,
+    );
+  }
+  assert.match(readme, /postgres_backend\.json/);
+  assert.match(readme, /npm install pg/);
 });
 
 test("examples include scheduled and cron notification flows", () => {

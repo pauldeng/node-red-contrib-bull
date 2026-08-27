@@ -6,7 +6,7 @@
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/pauldeng/node-red-contrib-bullmq/badge)](https://scorecard.dev/viewer/?uri=github.com/pauldeng/node-red-contrib-bullmq)
 [![License: MIT](https://img.shields.io/npm/l/@pauldeng/node-red-contrib-bullmq.svg)](LICENSE)
 
-Node-RED nodes for BullMQ-backed Redis job queues.
+Node-RED nodes for BullMQ job queues, backed by Redis or PostgreSQL.
 
 This package targets BullMQ 6.3.1 and Node-RED 5. Version 2 is a breaking release: it uses BullMQ v6 node names, commands, and Job Scheduler inputs only.
 
@@ -25,24 +25,32 @@ Repository: <https://github.com/pauldeng/node-red-contrib-bullmq>
 
 - Node-RED 5.x
 - Node.js 22.9+
-- Redis with `maxmemory-policy=noeviction`
-- Durable Redis persistence; for self-managed Redis, BullMQ recommends Append Only File (AOF) persistence
 - BullMQ 6.3.1
+- One backend per queue config: Redis, or PostgreSQL 13+ (14+ recommended) with the optional peer dependency `pg` installed
 
-BullMQ stores job data in clear text. Do not put secrets or other sensitive data in a job payload unless the sensitive fields are encrypted before the job is added.
+For the Redis backend:
+
+- Redis with `maxmemory-policy=noeviction`; evicting arbitrary BullMQ keys can corrupt queue behavior
+- Durable Redis persistence; for self-managed Redis, BullMQ recommends Append Only File (AOF) persistence
+
+BullMQ stores job data in clear text, in either backend. Do not put secrets or other sensitive data in a job payload unless the sensitive fields are encrypted before the job is added.
 
 Bull v4 Redis data is not automatically migrated. Drain, retire, or otherwise handle old Bull queues before upgrading the runtime dependency. Upgrading from a BullMQ v5 release of this package has its own steps; see [docs/MIGRATION.md](docs/MIGRATION.md).
 
 ## Nodes
 
-- `bullmq-queue-server`: shared BullMQ queue and Redis deployment config.
+- `bullmq-queue-server`: shared BullMQ queue and backend connection config, for Redis or PostgreSQL.
 - `bullmq cmd`: message-driven producer and queue administration commands.
 - `bullmq run`: BullMQ Worker that emits jobs into a Node-RED flow and caps each job at 100 processing starts by default.
 - `bullmq job`: manual acknowledgement and active-job actions for manual `bullmq run` flows.
 - `bullmq events`: QueueEvents source node for global BullMQ events.
 - `bullmq flow`: FlowProducer node for parent/child job trees.
 
-## Redis Deployments
+## Backends
+
+Each queue config node picks one backend. TLS serves both, with CA, client certificate, client key, server name, and certificate verification.
+
+### Redis
 
 Supported deployment modes:
 
@@ -51,9 +59,15 @@ Supported deployment modes:
 - AWS MemoryDB, configured as Redis Cluster with TLS
 - Redis Sentinel
 
-Authentication can use Redis ACL username/password. TLS supports CA, client certificate, client key, server name, and certificate verification. Cluster and MemoryDB prefixes must contain a hash tag, such as `{bull}`, to keep queue keys in one Redis Cluster slot for atomic operations.
+Authentication can use Redis ACL username/password. Cluster and MemoryDB prefixes must contain a hash tag, such as `{bull}`, to keep queue keys in one Redis Cluster slot for atomic operations.
 
 Independent queues may use different hash tags to spread load. Prefixes used in one `bullmq flow` tree or bulk flow batch must contain the same hash tag; each worker must use the exact prefix assigned to its queue in that flow.
+
+### PostgreSQL
+
+Host, port, database, username, password, plus a schema (`bullmq` by default), a connection pool size, and a migrations switch that creates and updates BullMQ's schema on connect. Install `pg` first (`npm install pg`); it is an optional peer dependency, and a missing install is reported once per config node on first use rather than at load.
+
+There is no Cluster or Sentinel topology, and no key prefix — both are Redis concepts. Budget the server's `max_connections` across every pool, and note that PostgreSQL event rows are never trimmed. Full details, including what PostgreSQL does not have, are in [docs/CONNECTIONS.md](docs/CONNECTIONS.md#postgresql).
 
 ## Job Schedulers
 

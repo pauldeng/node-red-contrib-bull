@@ -3,7 +3,7 @@
 ## Worker Does Not Receive Jobs
 
 - Confirm `bullmq run` uses the same `bullmq-queue-server` as `bullmq cmd`.
-- Confirm Redis is reachable from the Node-RED process.
+- Confirm the backend (Redis or PostgreSQL) is reachable from the Node-RED process.
 - Confirm the queue name is correct.
 - For scheduled jobs, BullMQ creates the next delayed job only as the previous scheduled job starts processing.
 
@@ -15,9 +15,33 @@ Use a BullMQ prefix with a Redis Cluster hash tag, such as `{bull}`. This keeps 
 
 MemoryDB is a Cluster deployment and normally requires TLS from an EC2/VPC client that can reach the endpoint. Use Cluster mode, TLS, ACL username/password, and a reachable VPC network path.
 
+## `Cannot find module 'pg'`
+
+The PostgreSQL backend needs the optional peer dependency: `npm install pg` in the Node-RED user directory, then redeploy. BullMQ loads `pg` while constructing the queue, so this is reported on first use rather than at load, once per config node.
+
+## `PostgreSQL schema "bullmq" is not initialized`
+
+The database has no BullMQ schema and this node was told not to create one. Either enable **Migrations** on the queue config node so it initialises the schema, or run BullMQ's PostgreSQL migrations against the database yourself before deploying. The node stays usable and reports the error rather than hanging.
+
+## PostgreSQL Schema Version Mismatch
+
+The schema was created by a different BullMQ major version. Upgrade this package to a release using the required BullMQ major; PostgreSQL schema downgrades are not supported.
+
+## Unsupported PostgreSQL Version
+
+BullMQ requires PostgreSQL 13 or newer, and recommends 14+. The server version is checked on connect, so this is reported before any job work rather than discovered mid-job.
+
+## PostgreSQL Connections Exhausted
+
+PostgreSQL has a server-wide `max_connections` ceiling, commonly 100, shared with every other client. Each config node's pool contributes up to its **Pool Max** and each backend also holds one dedicated `LISTEN` connection outside the pool, so many queues or many Node-RED instances can exhaust the server long before a pool fills. Raise `max_connections`, lower **Pool Max**, or put a pooler in front.
+
+## PostgreSQL Events Table Keeps Growing
+
+Expected, and not fixable from here: BullMQ's PostgreSQL adapter ignores the `maxEvents` trim argument, so event rows accumulate for as long as the queue is used. Prune the table out of band if a flow relies on `bullmq events`.
+
 ## TLS Certificate Errors
 
-Keep TLS verification enabled when possible. Provide the CA certificate or server name needed by the Redis deployment. Disable verification only for controlled deployments that cannot be configured with a trusted CA.
+Keep TLS verification enabled when possible. Provide the CA certificate or server name the deployment needs. On PostgreSQL, node-postgres takes the TLS server name from the connection host when that host is a hostname, so the server-name override only applies when the host is a literal IP address. Disable verification only for controlled deployments that cannot be configured with a trusted CA.
 
 ## Job Scheduler Is Not Found
 

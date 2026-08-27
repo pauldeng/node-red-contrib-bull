@@ -15,9 +15,19 @@ The package remains a single Node-RED module entry point, but BullMQ behavior is
 
 The runtime does Node-RED lifecycle work only: creating nodes, wiring input handlers, setting status, and closing resources.
 
+## Backends
+
+BullMQ v6 reaches its datastore through `IQueueBackend`, and this package selects one per config node with `backend`. Absent or blank means Redis, matching a flow saved before the field existed.
+
+The seam is a factory argument on the BullMQ constructors, and its position differs per class: `Queue(name, opts, factory)` and `QueueEvents(name, opts, factory)` take it third, `Worker(name, processor, opts, factory)` fourth, and `FlowProducer(opts, factory)` **second**. Redis is BullMQ's default, so the Redis path passes no factory at all; the PostgreSQL path passes `createPostgresBackend`. `setDefaultBackendFactory` is deliberately unused: a process-wide default would make two config nodes with different backends impossible.
+
+What each backend owns is the asymmetry the rest of this document keeps returning to. On Redis this package creates the ioredis connections and hands them over, so it holds a raw client per owner. On PostgreSQL BullMQ owns everything — a `pg` pool plus one dedicated `LISTEN` client per backend — so this package creates no connection, tracks the owner with no connection value, and has no raw handle to reach for. `pg` is loaded lazily by BullMQ while constructing the queue, which is why a missing install surfaces synchronously out of the constructor rather than through `waitUntilReady()`.
+
+Three operations in BullMQ 6.3.1's PostgreSQL adapter throw `not implemented`: `trimEvents`, `removeDeprecatedPriorityKey`, and `paginate` outside a flow's `:dependencies`/`:processed` keys. None is on a path these nodes use. `publishEvent` accepts but ignores `maxEvents`, so PostgreSQL event rows are never trimmed — recorded in [CONNECTIONS.md](CONNECTIONS.md#what-postgresql-does-not-have) as a standing limitation rather than worked around here.
+
 ## Connections
 
-`bullmq-queue-server` owns queue name and Redis deployment config. It creates role-specific ioredis connections:
+`bullmq-queue-server` owns queue name and connection config. On Redis it creates role-specific ioredis connections:
 
 - producer connections fail fast through `skipWaitingForReady: true` on the BullMQ owner plus `maxRetriesPerRequest: 1` on the socket. Without the first, BullMQ awaits a connection-ready promise that never settles while Redis is unreachable, so a `bullmq cmd` command hangs instead of erroring and the node never calls `done()`. The offline queue is deliberately left enabled so messages emitted during the brief connection window after a deploy are buffered;
 - worker and event connections use `maxRetriesPerRequest: null` and keep the offline queue, because a consumer should wait for the connection to come back rather than fail;
@@ -25,7 +35,9 @@ The runtime does Node-RED lifecycle work only: creating nodes, wiring input hand
 - QueueEvents uses a dedicated connection;
 - Cluster and MemoryDB use `{bull}` by default as the BullMQ prefix.
 
-Each BullMQ owner (`Queue`, `Worker`, `QueueEvents`, or `FlowProducer`) is tracked with its owned ioredis connection. A runtime node releases its pair on redeploy; config-node shutdown closes independent pairs concurrently. See Shutdown below for how each owner/connection pair actually closes.
+None of the above applies to PostgreSQL: readiness, retry, and offline-queue behavior are ioredis concepts, `skipWaitingForReady` is never read on that path, and there is no prefix. A PostgreSQL config node instead carries the pool size, schema, and migration switch described in [CONNECTIONS.md](CONNECTIONS.md#postgresql).
+
+Each BullMQ owner (`Queue`, `Worker`, `QueueEvents`, or `FlowProducer`) is tracked with its owned ioredis connection, or with no connection at all on PostgreSQL. A runtime node releases its pair on redeploy; config-node shutdown closes independent pairs concurrently. See Shutdown below for how each owner/connection pair actually closes.
 
 Connection and resource errors are reported on the consuming runtime node's status (`bullmq run`, `bullmq events`, `bullmq flow`). The config node owns the shared queue and its producer connection. Each `bullmq cmd` mirrors that shared queue's backend (`Queue.getBackend()`, BullMQ's `IQueueBackend`) on its visible status instead of reading the producer connection directly, while Queue errors report on the config node.
 

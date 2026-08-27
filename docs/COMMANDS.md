@@ -129,7 +129,7 @@ Removed repeatable-job command names fail with an error naming their BullMQ v6 r
 
 `getJobCounts` no longer includes a `paused` key in its result: BullMQ v6 removed the `paused` job state, so a paused queue's jobs count as `waiting`. Use `isPaused` to check whether the queue itself is paused.
 
-`isPaused` and `isMaxed` each return a boolean for the queue's current state. `getVersion` returns the BullMQ version recorded against this queue in Redis.
+`isPaused` and `isMaxed` each return a boolean for the queue's current state. `getVersion` returns the BullMQ version recorded against this queue in the backing store.
 
 ## Concurrency And Rate Limits
 
