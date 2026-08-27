@@ -396,7 +396,6 @@ module.exports = function registerBullMQNodes(RED) {
     RED.nodes.createNode(this, n);
     const node = this;
 
-    node.users = {};
     node.resources = new Map();
     node.config = normalizeQueueConfig(n, node.credentials || {});
     node.queue = null;
@@ -451,20 +450,6 @@ module.exports = function registerBullMQNodes(RED) {
         enableMetrics: node.config.telemetryMetrics,
       });
       return node.telemetry;
-    };
-
-    node.register = function register(bullNode) {
-      node.users[bullNode.id] = bullNode;
-      bullNode.status({
-        fill: "grey",
-        shape: "ring",
-        text: "configured",
-      });
-    };
-
-    node.deregister = function deregister(bullNode, done) {
-      delete node.users[bullNode.id];
-      done();
     };
 
     // owner is the node whose status should reflect connection errors. It
@@ -625,17 +610,6 @@ module.exports = function registerBullMQNodes(RED) {
       };
     };
 
-    // The producer connection backs the shared queue. No production code reads
-    // it now that status is owned above; the Redis restart-recovery test does,
-    // because simulating a restart needs the raw ioredis client. On postgres
-    // node.producerConnection is never assigned (BullMQ owns that pool), so
-    // this returns null -- an honest "no raw connection", not an error, since
-    // nothing on the postgres path needs one today.
-    node.getProducerConnection = function getProducerConnection() {
-      node.getQueue();
-      return node.producerConnection;
-    };
-
     // Runtime nodes pass themselves as owner and attach their own resource
     // error listener, so worker/events/flow errors surface on the visible
     // runtime node rather than the hidden config node.
@@ -710,8 +684,6 @@ module.exports = function registerBullMQNodes(RED) {
       return;
     }
 
-    node.bullConn.register(node);
-
     // Mirror the config node's live view of the shared backend. Reading the
     // shared state rather than subscribing to the backend directly keeps the
     // listener count on the backend constant no matter how many bullmq cmd
@@ -756,7 +728,7 @@ module.exports = function registerBullMQNodes(RED) {
 
     node.on("close", function onClose(removed, done) {
       stopReadingBackend();
-      node.bullConn.deregister(node, done);
+      done();
     });
   }
 
@@ -845,12 +817,9 @@ module.exports = function registerBullMQNodes(RED) {
     // nothing was created, so there is nothing to close on this node's own
     // close, and no listener setup below would have anything to attach to.
     if (!node.worker) {
-      // Register only on success: registering first would leave the config
-      // node holding this node with no close handler to deregister it.
       setDisconnected(node);
       return;
     }
-    node.bullQueue.register(node);
     const workerStartupFailureOwner =
       node.bullQueue.config.backend === "postgres" ? node.bullQueue : undefined;
     const markWorkerReady = attachErrorListener(
@@ -899,7 +868,6 @@ module.exports = function registerBullMQNodes(RED) {
       );
       try {
         await node.bullQueue.releaseResource(node.worker);
-        node.bullQueue.deregister(node, () => {});
         done();
       } catch (err) {
         done(err);
@@ -1055,13 +1023,10 @@ module.exports = function registerBullMQNodes(RED) {
 
     node.queueEvents = node.bullConn.createQueueEvents(node);
     if (!node.queueEvents) {
-      // Construction failed synchronously and already reported why. Register
-      // only on success: registering first would leave the config node holding
-      // this node in its users map with no close handler to deregister it.
+      // Construction failed synchronously and already reported why.
       setDisconnected(node);
       return;
     }
-    node.bullConn.register(node);
     const eventsStartupFailureOwner =
       node.bullConn.config.backend === "postgres" ? node.bullConn : undefined;
     const markQueueEventsReady = attachErrorListener(
@@ -1103,7 +1068,6 @@ module.exports = function registerBullMQNodes(RED) {
     node.on("close", async function onClose(removed, done) {
       try {
         await node.bullConn.releaseResource(node.queueEvents);
-        node.bullConn.deregister(node, () => {});
         done();
       } catch (err) {
         done(err);
@@ -1125,13 +1089,10 @@ module.exports = function registerBullMQNodes(RED) {
 
     node.flowProducer = node.bullConn.createFlowProducer(node);
     if (!node.flowProducer) {
-      // Construction failed synchronously and already reported why. Register
-      // only on success: registering first would leave the config node holding
-      // this node in its users map with no close handler to deregister it.
+      // Construction failed synchronously and already reported why.
       setDisconnected(node);
       return;
     }
-    node.bullConn.register(node);
     const flowStartupFailureOwner =
       node.bullConn.config.backend === "postgres" ? node.bullConn : undefined;
     const markFlowProducerReady = attachErrorListener(
@@ -1192,7 +1153,6 @@ module.exports = function registerBullMQNodes(RED) {
     node.on("close", async function onClose(removed, done) {
       try {
         await node.bullConn.releaseResource(node.flowProducer);
-        node.bullConn.deregister(node, () => {});
         done();
       } catch (err) {
         done(err);

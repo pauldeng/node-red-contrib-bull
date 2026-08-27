@@ -80,7 +80,7 @@ Current executable fixtures:
 - `postgres-plain`: PostgreSQL without TLS
 - `postgres-tls`: PostgreSQL with the Docker-only self-signed TLS fixture
 
-The shared deployment test proves Node-RED load, credential-backed auth, add/run delivery, native scheduler creation/removal, absolute scheduler minute/second metadata, live cancellation retries and `cancelAllJobs`, and OpenTelemetry add/process spans plus completed/duration metrics. TLS fixtures use local self-signed test certificates and disable certificate verification for those Docker-only deployments. MemoryDB remains the certificate-verified TLS deployment path.
+The shared deployment test proves Node-RED load, credential-backed auth, add/run delivery, native scheduler creation/removal, absolute scheduler minute/second metadata, live cancellation retries and `cancelAllJobs`, and OpenTelemetry add/process spans plus completed/duration metrics. The Docker topology fixtures use local self-signed test certificates and disable certificate verification. The dedicated PostgreSQL TLS integration test verifies that certificate through the credential-backed CA field; MemoryDB covers verified TLS for Redis.
 
 ## AWS MemoryDB
 

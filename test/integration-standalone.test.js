@@ -1850,7 +1850,7 @@ test(
       assert.equal((await firstRun).payload, "before restart");
 
       const configNode = helper.getNode("queue");
-      const producerConnection = configNode.getProducerConnection();
+      const producerConnection = configNode.producerConnection;
       const workerConnection = configNode.resources.get(run.worker);
       const producerClosed = once(producerConnection, "close", {
         signal: AbortSignal.timeout(5000),

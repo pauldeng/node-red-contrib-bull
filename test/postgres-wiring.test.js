@@ -121,6 +121,7 @@ test("postgres getQueue builds a PostgresQueueBackend and never creates a Redis 
       queue.getBackend() instanceof PostgresQueueBackend,
       "queue backend must be the PostgreSQL adapter",
     );
+    assert.equal(queue.getBackend().listenClientName, undefined);
     assert.ok(
       node.resources.has(queue),
       "the owner must be tracked so redeploy releases it",
@@ -134,11 +135,6 @@ test("postgres getQueue builds a PostgresQueueBackend and never creates a Redis 
       node.producerConnection,
       null,
       "no producer connection is created on the postgres path",
-    );
-    assert.equal(
-      node.getProducerConnection(),
-      null,
-      "getProducerConnection has nothing to return on postgres",
     );
   } finally {
     await closeQuietly(queue);
@@ -158,6 +154,7 @@ test("postgres createWorker builds a PostgresQueueBackend at the worker factory 
       worker.getBackend() instanceof PostgresQueueBackend,
       "worker backend must be the PostgreSQL adapter",
     );
+    assert.equal(worker.getBackend().listenClientName, "pgcasts");
     assert.ok(
       node.resources.has(worker),
       "the owner must be tracked so redeploy releases it",
@@ -189,6 +186,7 @@ test("postgres createQueueEvents builds a PostgresQueueBackend", async () => {
       queueEvents.getBackend() instanceof PostgresQueueBackend,
       "queueEvents backend must be the PostgreSQL adapter",
     );
+    assert.equal(queueEvents.getBackend().listenClientName, "pgcasts:qe");
     assert.ok(
       node.resources.has(queueEvents),
       "the owner must be tracked so redeploy releases it",
@@ -214,6 +212,7 @@ test("postgres createFlowProducer builds a PostgresQueueBackend", async () => {
       flowProducer.getBackend() instanceof PostgresQueueBackend,
       "flowProducer backend must be the PostgreSQL adapter",
     );
+    assert.equal(flowProducer.getBackend().listenClientName, undefined);
     assert.ok(
       node.resources.has(flowProducer),
       "the owner must be tracked so redeploy releases it",

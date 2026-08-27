@@ -5,7 +5,8 @@
 // test/integration-standalone.test.js).
 //
 // Three things this file proves:
-//   1. A job round-trips through the Node-RED nodes over TLS.
+//   1. A job round-trips through the Node-RED nodes over verified TLS using
+//      the configured CA credential.
 //   2. tlsRejectUnauthorized:true with no CA fails the connection with a
 //      clear certificate error rather than silently downgrading to
 //      plaintext.
@@ -284,7 +285,7 @@ async function stopHelper(userDir) {
 }
 
 test(
-  "PostgreSQL backend over TLS: a job round-trips through the Node-RED nodes",
+  "PostgreSQL backend over verified TLS: a job round-trips through the Node-RED nodes",
   { skip: skipReason },
   async () => {
     // Container first, released last -- see integration-postgres.test.js for
@@ -296,12 +297,7 @@ test(
       userDir = await startHelper();
       const flow = [
         { id: "tab", type: "tab", label: "postgres tls manual ack" },
-        // Self-signed fixture cert: tlsRejectUnauthorized false is the
-        // deliberate, documented opt-out this fixture requires -- never the
-        // default.
-        postgresTlsQueueConfig("queue", "pgtlscasts", postgres, {
-          tlsRejectUnauthorized: false,
-        }),
+        postgresTlsQueueConfig("queue", "pgtlscasts", postgres),
         {
           id: "cmd",
           type: "bullmq cmd",
@@ -351,7 +347,10 @@ test(
       ];
 
       await helper.load(bullNodes, flow, {
-        queue: { password: postgres.password },
+        queue: {
+          password: postgres.password,
+          tlsCa: fs.readFileSync(path.join(TLS_CERTS_DIR, "ca.crt"), "utf8"),
+        },
       });
       const cmd = helper.getNode("cmd");
       const addOutput = waitForInput(helper.getNode("cmd-out"));
