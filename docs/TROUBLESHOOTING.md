@@ -33,7 +33,11 @@ BullMQ requires PostgreSQL 13 or newer, and recommends 14+. The server version i
 
 ## PostgreSQL Connections Exhausted
 
-PostgreSQL has a server-wide `max_connections` ceiling, commonly 100, shared with every other client. Each config node's pool contributes up to its **Pool Max** and each backend also holds one dedicated `LISTEN` connection outside the pool, so many queues or many Node-RED instances can exhaust the server long before a pool fills. Raise `max_connections`, lower **Pool Max**, or put a pooler in front.
+PostgreSQL has a server-wide `max_connections` ceiling, commonly 100, shared with every other client. There is one pool per BullMQ resource rather than one per config node, so a config node feeding `bullmq cmd`, `bullmq run`, `bullmq events`, and `bullmq flow` costs up to 4 × (**Pool Max** + 1) connections — 12 at the default — and many queues or many Node-RED instances multiply that. Raise `max_connections`, lower **Pool Max**, or put a pooler in front.
+
+## PostgreSQL `timeout exceeded when trying to connect`
+
+Two different causes share this message, because node-postgres uses one timeout for both. Either the server is unreachable, or the pool is full and the caller waited 10 seconds for a free connection. The second is the one to suspect when the database is plainly healthy: raise **Pool Max** so it can serve the `bullmq run` node's **Concurrency**, then re-check the total against `max_connections`.
 
 ## PostgreSQL Events Table Keeps Growing
 
