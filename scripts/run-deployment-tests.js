@@ -290,7 +290,7 @@ function waitForSentinelTls() {
 function runExternalIntegration(env) {
   run(process.execPath, ["--test", "test/integration-deployment.test.js"], {
     env: {
-      BULLMQ_EXTERNAL_REDIS: "1",
+      BULLMQ_EXTERNAL_BACKEND: "1",
       ...env,
     },
   });
@@ -315,7 +315,13 @@ function runDeployment(deployment) {
   });
 
   try {
-    docker(composeArgs(deployment.name, ["up", "-d"]));
+    docker(
+      composeArgs(deployment.name, [
+        "up",
+        "-d",
+        ...(deployment.build ? ["--build"] : []),
+      ]),
+    );
     deployment.wait();
     console.log(`==> ${deployment.name}: running Node-RED BullMQ tests`);
     runExternalIntegration(deployment.env);
@@ -483,6 +489,7 @@ function main() {
     },
     {
       name: "postgres-tls",
+      build: true,
       env: deploymentEnv("postgres-tls", {
         BULLMQ_BACKEND: "postgres",
         BULLMQ_PORT: POSTGRES_TLS_PORT,

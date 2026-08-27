@@ -25,6 +25,20 @@ Small BullMQ feature examples that all use one local Redis queue config named `b
 
 Point `bullmq-features` at your Redis deployment before deploying the flow.
 
+## `scheduled_notifications.json`
+
+Scheduling a series of user notifications on the `notifycasts` queue, and delivering each one to a worker. Both halves share one queue and one worker.
+
+- `notify: schedule user series` builds one delayed job per notification from a per-user schedule of explicit ISO-8601 instants, and enqueues the whole series with a single `addBulk`. BullMQ delays in milliseconds rather than at an absolute time, so each instant is converted to a delay at enqueue time; an instant already in the past becomes a delay of `0` and is delivered immediately. Send your own schedule as `msg.payload` in the same shape -- the built-in sample dates are placeholders.
+- Each job gets a `jobId` derived from the user, the notification type and the scheduled instant, so re-sending the same schedule cannot double-book a notification. The instant is used as epoch milliseconds and the parts joined with `-`, because BullMQ rejects a custom job id containing `:`.
+- `notify: cron daily digest` sends `upsertJobScheduler` with a six-field cron `msg.repeat.pattern` (the leading field is seconds) and `msg.repeat.tz`, carrying the notification in `msg.template.data` so every generated job arrives with it.
+- `notify: remove cron digest` sends `removeJobScheduler`. A Job Scheduler outlives a redeploy, so an example that creates one needs a way to remove it.
+- `notification worker` is an immediate-mode `bullmq run` node; `deliver notification` reads the notification out of `msg.payload.message` and sets `msg.topic` to `userId/type`.
+
+A delayed job's time is when it becomes _eligible_, not a guaranteed start: worker availability and concurrency still decide when it actually runs.
+
+Point `notifycasts` at your Redis or PostgreSQL deployment before deploying the flow.
+
 ## `repeatable_jobs.json`
 
 Native BullMQ v6 Job Scheduler commands for the `basecasts` queue.
