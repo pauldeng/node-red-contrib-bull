@@ -10,7 +10,7 @@ const { metrics, trace } = require("@opentelemetry/api");
 const helper = require("node-red-node-test-helper");
 const bullNodes = require("../bull-queue");
 
-const enabled = process.env.BULLMQ_EXTERNAL_REDIS === "1";
+const enabled = process.env.BULLMQ_EXTERNAL_BACKEND === "1";
 
 function envBoolean(name, defaultValue = false) {
   const value = process.env[name];
@@ -160,7 +160,7 @@ function installTelemetryRecorder() {
 }
 
 test(
-  "external Redis deployment verifies scheduling, cancellation, and telemetry",
+  "external backend deployment verifies scheduling, cancellation, and telemetry",
   { skip: !enabled },
   async () => {
     const telemetry = installTelemetryRecorder();

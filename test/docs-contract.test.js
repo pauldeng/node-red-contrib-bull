@@ -251,6 +251,7 @@ test("repository text does not contain MemoryDB secret assignments", () => {
     "examples/example_flow.json",
     "examples/bullmq_features.json",
     "examples/repeatable_jobs.json",
+    "examples/scheduled_notifications.json",
     "package.json",
   ];
 
@@ -261,6 +262,61 @@ test("repository text does not contain MemoryDB secret assignments", () => {
   for (const pattern of forbiddenPatterns) {
     assert.doesNotMatch(allText, pattern);
   }
+});
+
+test("examples include scheduled and cron notification flows", () => {
+  const fileText = read("examples/scheduled_notifications.json");
+  const example = JSON.parse(fileText);
+  const readme = read("examples/README.md");
+  const functionText = example
+    .filter((node) => node.type === "function")
+    .map((node) => node.func)
+    .join("\n");
+  const searchableText = `${JSON.stringify(example)}\n${functionText}`;
+
+  for (const label of [
+    "notify: schedule user series",
+    "notify: cron daily digest",
+    "notify: remove cron digest",
+    "notification worker",
+    "deliver notification",
+  ]) {
+    assert.match(
+      searchableText,
+      new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    );
+  }
+
+  for (const text of [
+    'msg.cmd = "addBulk"',
+    'msg.cmd = "upsertJobScheduler"',
+    'msg.cmd = "removeJobScheduler"',
+    // The ISO-8601 instant is converted to a delay at enqueue time, which is
+    // the whole point of the scheduled series.
+    "new Date(job.time).getTime()",
+    "delay: Math.max(0, scheduledAt - now)",
+    // A custom job id cannot contain ":", so neither the separator nor the
+    // instant may be the raw ISO string.
+    "${user.userId}-${job.message.type}-${scheduledAt}",
+    'pattern: "0 0 8 * * *"',
+    'tz: "UTC"',
+    "msg.payload.message",
+  ]) {
+    assert.match(
+      searchableText,
+      new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    );
+  }
+
+  // A shipped example that the README does not mention is one nobody finds.
+  assert.match(readme, /scheduled_notifications\.json/);
+  assert.match(readme, /eligible/);
+
+  // Never a real endpoint or secret in a shipped flow.
+  const queue = example.find((node) => node.type === "bullmq-queue-server");
+  assert.equal(queue.address, "localhost");
+  assert.equal(queue.username, "");
+  assert.ok(!("password" in queue), "a shipped flow must carry no password");
 });
 
 test("public package docs and helpers use the BullMQ repo name and Node.js 22.9 support", () => {

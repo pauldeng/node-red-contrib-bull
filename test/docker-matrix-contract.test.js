@@ -23,7 +23,7 @@ test("package exposes a Docker deployment matrix test command", () => {
   assert.ok(exists("scripts/run-deployment-tests.js"));
 });
 
-test("Docker deployment fixtures cover standalone, cluster, and sentinel Redis", () => {
+test("Docker deployment fixtures cover Redis topologies and PostgreSQL", () => {
   const requiredFiles = [
     "test/deployments/single-noauth/compose.yml",
     "test/deployments/single-auth/compose.yml",
@@ -60,6 +60,11 @@ test("Docker deployment fixtures cover standalone, cluster, and sentinel Redis",
   assert.match(read("test/deployments/cluster-tls/compose.yml"), /--tls/);
   assert.match(read("test/deployments/sentinel-auth/compose.yml"), /sentinel/i);
   assert.match(read("test/deployments/sentinel-tls/compose.yml"), /tls-port/);
+  assert.match(
+    read("test/deployments/postgres-plain/compose.yml"),
+    /postgres/i,
+  );
+  assert.match(read("test/deployments/postgres-tls/compose.yml"), /ssl=on/);
 });
 
 test("Docker Redis fixtures use BullMQ production-safe memory policy", () => {
@@ -122,11 +127,15 @@ test("Docker runner keeps AWS MemoryDB optional and environment-only", () => {
     "cluster-tls",
     "sentinel-auth",
     "sentinel-tls",
+    "postgres-plain",
+    "postgres-tls",
   ]) {
     assert.match(runner, new RegExp(name));
   }
 
   assert.match(runner, /MEMORYDB_ENABLED/);
+  assert.match(runner, /BULLMQ_BACKEND/);
+  assert.match(runner, /deployment\.build \? \["--build"\]/);
   assert.match(runner, /MEMORYDB_ENDPOINT/);
   assert.match(runner, /MEMORYDB_PASSWORD/);
   assert.doesNotMatch(runner, /clustercfg\.memdb\.bchgcd/);

@@ -10,7 +10,7 @@ const vm = require("node:vm");
 
 const helper = require("node-red-node-test-helper");
 const bullNodes = require("../bull-queue");
-const { ADAPTERS, REDIS_ADAPTER, startRedis } = require("./helpers/stores");
+const { ADAPTERS, REDIS_ADAPTER } = require("./helpers/stores");
 
 const enabled = process.env.BULLMQ_INTEGRATION === "1";
 
@@ -52,14 +52,43 @@ async function startHelper() {
     credentialSecret: false,
     logging: { console: { level: "fatal" } },
   });
-  await helper.startServer();
-  return userDir;
+  try {
+    await helper.startServer();
+    return userDir;
+  } catch (err) {
+    fs.rmSync(userDir, { recursive: true, force: true });
+    throw err;
+  }
 }
 
 async function stopHelper(userDir) {
-  await helper.unload();
-  await helper.stopServer();
-  fs.rmSync(userDir, { recursive: true, force: true });
+  try {
+    await helper.unload();
+  } finally {
+    try {
+      await helper.stopServer();
+    } finally {
+      fs.rmSync(userDir, { recursive: true, force: true });
+    }
+  }
+}
+
+async function startTest(adapter) {
+  const store = await adapter.start();
+  try {
+    return { store, userDir: await startHelper() };
+  } catch (err) {
+    await store.stop();
+    throw err;
+  }
+}
+
+async function stopTest(store, userDir) {
+  try {
+    await stopHelper(userDir);
+  } finally {
+    await store.stop();
+  }
 }
 
 function readExampleFlow(relativePath) {
@@ -99,8 +128,7 @@ for (const adapter of ADAPTERS) {
     `${adapter.name}: flow adds, runs, and manages BullMQ v6 schedulers`,
     { skip: skipFor(adapter) },
     async () => {
-      const store = await adapter.start();
-      const userDir = await startHelper();
+      const { store, userDir } = await startTest(adapter);
 
       try {
         const flow = [
@@ -194,8 +222,7 @@ for (const adapter of ADAPTERS) {
         });
         assert.equal((await removeOutput).payload, true);
       } finally {
-        await stopHelper(userDir);
-        await store.stop();
+        await stopTest(store, userDir);
       }
     },
   );
@@ -204,8 +231,7 @@ for (const adapter of ADAPTERS) {
     `${adapter.name}: manual acknowledgement completes a BullMQ job through bullmq job`,
     { skip: skipFor(adapter) },
     async () => {
-      const store = await adapter.start();
-      const userDir = await startHelper();
+      const { store, userDir } = await startTest(adapter);
 
       try {
         const flow = [
@@ -278,8 +304,7 @@ for (const adapter of ADAPTERS) {
         assert.equal((await addOutput).payload.name, "default");
         assert.equal((await completeOutput).payload, "manual ack payload");
       } finally {
-        await stopHelper(userDir);
-        await store.stop();
+        await stopTest(store, userDir);
       }
     },
   );
@@ -288,8 +313,7 @@ for (const adapter of ADAPTERS) {
     `${adapter.name}: dedicated Job Scheduler example commands work against the backend`,
     { skip: skipFor(adapter) },
     async () => {
-      const store = await adapter.start();
-      const userDir = await startHelper();
+      const { store, userDir } = await startTest(adapter);
 
       try {
         const example = readExampleFlow("examples/repeatable_jobs.json");
@@ -405,8 +429,7 @@ for (const adapter of ADAPTERS) {
         );
         assert.equal(finalCount.payload, 0);
       } finally {
-        await stopHelper(userDir);
-        await store.stop();
+        await stopTest(store, userDir);
       }
     },
   );
@@ -415,8 +438,7 @@ for (const adapter of ADAPTERS) {
     `${adapter.name}: bullmq cmd manages delayed jobs, priorities, and global rate limits`,
     { skip: skipFor(adapter) },
     async () => {
-      const store = await adapter.start();
-      const userDir = await startHelper();
+      const { store, userDir } = await startTest(adapter);
 
       try {
         const flow = [
@@ -519,8 +541,7 @@ for (const adapter of ADAPTERS) {
           2,
         );
       } finally {
-        await stopHelper(userDir);
-        await store.stop();
+        await stopTest(store, userDir);
       }
     },
   );
@@ -529,8 +550,7 @@ for (const adapter of ADAPTERS) {
     `${adapter.name}: bullmq events reports deduplicated jobs from bullmq cmd`,
     { skip: skipFor(adapter) },
     async () => {
-      const store = await adapter.start();
-      const userDir = await startHelper();
+      const { store, userDir } = await startTest(adapter);
 
       try {
         const flow = [
@@ -617,8 +637,7 @@ for (const adapter of ADAPTERS) {
         });
         assert.equal(removed.payload, 1);
       } finally {
-        await stopHelper(userDir);
-        await store.stop();
+        await stopTest(store, userDir);
       }
     },
   );
@@ -627,8 +646,7 @@ for (const adapter of ADAPTERS) {
     `${adapter.name}: bullmq flow adds parent and child jobs through FlowProducer`,
     { skip: skipFor(adapter) },
     async () => {
-      const store = await adapter.start();
-      const userDir = await startHelper();
+      const { store, userDir } = await startTest(adapter);
 
       try {
         const flow = [
@@ -696,8 +714,7 @@ for (const adapter of ADAPTERS) {
         assert.equal(msg.payload.children[0].job.opts.removeOnComplete, 25);
         assert.equal(msg.payload.children[0].job.opts.removeOnFail, false);
       } finally {
-        await stopHelper(userDir);
-        await store.stop();
+        await stopTest(store, userDir);
       }
     },
   );
@@ -706,8 +723,7 @@ for (const adapter of ADAPTERS) {
     `${adapter.name}: bullmq job cancelJob aborts each live retry attempt`,
     { skip: skipFor(adapter) },
     async () => {
-      const store = await adapter.start();
-      const userDir = await startHelper();
+      const { store, userDir } = await startTest(adapter);
 
       try {
         const flow = [
@@ -807,8 +823,7 @@ for (const adapter of ADAPTERS) {
         assert.equal(failed.topic, "failed");
         assert.match(failed.payload.failedReason, /BullMQ job cancelled/);
       } finally {
-        await stopHelper(userDir);
-        await store.stop();
+        await stopTest(store, userDir);
       }
     },
   );
@@ -817,8 +832,7 @@ for (const adapter of ADAPTERS) {
     `${adapter.name}: bullmq job cancelAllJobs aborts every active job on its worker`,
     { skip: skipFor(adapter) },
     async () => {
-      const store = await adapter.start();
-      const userDir = await startHelper();
+      const { store, userDir } = await startTest(adapter);
 
       try {
         const flow = [
@@ -889,8 +903,7 @@ for (const adapter of ADAPTERS) {
         }
         assert.equal(await queue.getFailedCount(), 2);
       } finally {
-        await stopHelper(userDir);
-        await store.stop();
+        await stopTest(store, userDir);
       }
     },
   );
@@ -899,8 +912,7 @@ for (const adapter of ADAPTERS) {
     `${adapter.name}: closing Node-RED with an active manual job finalizes it as failed`,
     { skip: skipFor(adapter), timeout: 30000 },
     async () => {
-      const store = await adapter.start();
-      const userDir = await startHelper();
+      const { store, userDir } = await startTest(adapter);
       const queueName = "shutdowncasts";
       const inspector = adapter.inspectorQueue(queueName, store);
       inspector.on("error", () => {});
@@ -952,8 +964,7 @@ for (const adapter of ADAPTERS) {
         );
       } finally {
         await inspector.close();
-        await stopHelper(userDir);
-        await store.stop();
+        await stopTest(store, userDir);
       }
     },
   );
@@ -962,8 +973,7 @@ for (const adapter of ADAPTERS) {
     `${adapter.name}: bullmq job resumes a delayed job at the step recorded by updateData`,
     { skip: skipFor(adapter) },
     async () => {
-      const store = await adapter.start();
-      const userDir = await startHelper();
+      const { store, userDir } = await startTest(adapter);
 
       try {
         // No core function node here: node-red-node-test-helper only registers
@@ -1035,8 +1045,7 @@ for (const adapter of ADAPTERS) {
 
         job.receive({ ...second, cmd: "complete", payload: "done" });
       } finally {
-        await stopHelper(userDir);
-        store.stop();
+        await stopTest(store, userDir);
       }
     },
   );
@@ -1045,8 +1054,7 @@ for (const adapter of ADAPTERS) {
     `${adapter.name}: bullmq flow addBulk creates trees across separate queues atomically`,
     { skip: skipFor(adapter) },
     async () => {
-      const store = await adapter.start();
-      const userDir = await startHelper();
+      const { store, userDir } = await startTest(adapter);
 
       try {
         const flow = [
@@ -1092,8 +1100,7 @@ for (const adapter of ADAPTERS) {
           await Promise.all(inspectors.map((inspector) => inspector.close()));
         }
       } finally {
-        await stopHelper(userDir);
-        store.stop();
+        await stopTest(store, userDir);
       }
     },
   );
@@ -1120,8 +1127,7 @@ for (const adapter of ADAPTERS) {
         [...source.matchAll(/case "([a-zA-Z]+)":/g)].map((m) => m[1]),
       );
 
-      const store = await adapter.start();
-      const userDir = await startHelper();
+      const { store, userDir } = await startTest(adapter);
 
       try {
         const flow = [
@@ -1252,8 +1258,522 @@ for (const adapter of ADAPTERS) {
           }
         }
       } finally {
-        await stopHelper(userDir);
-        await store.stop();
+        await stopTest(store, userDir);
+      }
+    },
+  );
+
+  test(
+    `${adapter.name}: every bullmq job action runs against the live backend`,
+    { skip: skipFor(adapter), timeout: 60000 },
+    async () => {
+      const { store, userDir } = await startTest(adapter);
+
+      try {
+        const flow = [
+          { id: "tab", type: "tab", label: "job action parity" },
+          adapter.queueConfig("queue", "actioncasts", store),
+          {
+            id: "cmd",
+            type: "bullmq cmd",
+            z: "tab",
+            queue: "queue",
+            wires: [["cmd-out"]],
+          },
+          { id: "cmd-out", type: "helper", z: "tab", wires: [] },
+          {
+            id: "run",
+            type: "bullmq run",
+            z: "tab",
+            queue: "queue",
+            completionMode: "manual",
+            ackTimeout: 300000,
+            concurrency: 1,
+            limiterMax: 100,
+            limiterDuration: 1000,
+            wires: [["active-out"]],
+          },
+          { id: "active-out", type: "helper", z: "tab", wires: [] },
+          {
+            id: "job",
+            type: "bullmq job",
+            z: "tab",
+            action: "complete",
+            wires: [["job-out"]],
+          },
+          { id: "job-out", type: "helper", z: "tab", wires: [] },
+          {
+            id: "events",
+            type: "bullmq events",
+            z: "tab",
+            queue: "queue",
+            events: "failed",
+            wires: [["events-out"]],
+          },
+          { id: "events-out", type: "helper", z: "tab", wires: [] },
+        ];
+
+        await helper.load(bullNodes, flow, adapter.credentials(store));
+        const cmd = helper.getNode("cmd");
+        const cmdOut = helper.getNode("cmd-out");
+        const activeOut = helper.getNode("active-out");
+        const job = helper.getNode("job");
+        const jobOut = helper.getNode("job-out");
+        const eventsOut = helper.getNode("events-out");
+        await helper.getNode("events").queueEvents.waitUntilReady();
+
+        async function activate(payload, jobopts = {}) {
+          const active = waitForInput(activeOut);
+          await receiveCommand(cmd, cmdOut, { cmd: "add", payload, jobopts });
+          return await active;
+        }
+
+        // Every action actually sent is recorded here, and the set is compared
+        // against the node's own switch at the end. Without that link the
+        // coverage claim is by inspection: a new action could be "covered" by
+        // appending it to the expected list and never running it.
+        const exercised = new Set();
+
+        function send(active, action, fields = {}) {
+          exercised.add(action);
+          job.receive({ ...active, cmd: action, ...fields });
+        }
+
+        async function runAndReceive(active, action, fields = {}) {
+          const output = waitForInput(jobOut);
+          send(active, action, fields);
+          return await output;
+        }
+
+        let active = await activate("non-settling actions", {
+          deduplication: { id: "action-dedup" },
+        });
+        for (const [action, fields] of [
+          ["progress", { progress: 25 }],
+          ["removeDeduplicationKey", {}],
+          ["getChildrenValues", {}],
+          ["getFailedChildrenValues", {}],
+          ["removeUnprocessedChildren", {}],
+          ["updateData", { jobData: { payload: "updated" } }],
+        ]) {
+          active = await runAndReceive(active, action, fields);
+        }
+        await runAndReceive(active, "complete", { result: "done" });
+
+        for (const action of ["fail", "failUnrecoverable"]) {
+          active = await activate(action, { removeOnFail: false });
+          const failed = waitForInput(eventsOut);
+          send(active, action, { error: `${action} action proof` });
+          assert.match((await failed).payload.failedReason, /action proof/);
+        }
+
+        for (const [action, fields] of [
+          ["rateLimit", { duration: 50 }],
+          ["moveToWait", {}],
+          ["moveToDelayed", { delay: 50 }],
+        ]) {
+          const activations = waitForInputMessages(activeOut, 2, 15000);
+          active = await activate(action);
+          if (action === "moveToWait" || action === "moveToDelayed") {
+            await runAndReceive(active, action, fields);
+          } else {
+            send(active, action, fields);
+          }
+          const [, resumed] = await activations;
+          await runAndReceive(resumed, "complete", { result: "resumed" });
+        }
+
+        active = await activate("cancel job", { removeOnFail: false });
+        await runAndReceive(active, "cancelJob");
+        active = await activate("cancel all", { removeOnFail: false });
+        await runAndReceive(active, "cancelAllJobs");
+
+        const source = fs.readFileSync(
+          path.join(__dirname, "..", "bull-queue.js"),
+          "utf8",
+        );
+        const actionSwitch = source.slice(
+          source.indexOf("function BullJobNode"),
+          source.indexOf("function BullEventsNode"),
+        );
+        const declared = [...actionSwitch.matchAll(/case "([a-zA-Z]+)":/g)].map(
+          (match) => match[1],
+        );
+        assert.deepEqual(
+          declared.filter((action) => !exercised.has(action)).sort(),
+          [],
+          "every bullmq job action must actually be sent by this test",
+        );
+        assert.deepEqual(
+          [...exercised].filter((action) => !declared.includes(action)).sort(),
+          [],
+          "this test sends an action the bullmq job node no longer has",
+        );
+        assert.deepEqual(declared.sort(), [
+          "cancelAllJobs",
+          "cancelJob",
+          "complete",
+          "fail",
+          "failUnrecoverable",
+          "getChildrenValues",
+          "getFailedChildrenValues",
+          "moveToDelayed",
+          "moveToWait",
+          "progress",
+          "rateLimit",
+          "removeDeduplicationKey",
+          "removeUnprocessedChildren",
+          "updateData",
+        ]);
+      } finally {
+        await stopTest(store, userDir);
+      }
+    },
+  );
+
+  // The delayed half of examples/scheduled_notifications.json, end to end: a
+  // per-user series of explicitly-timed notifications is enqueued in one
+  // addBulk and every one of them reaches the worker. The example's own
+  // function node does the ISO-8601-to-delay conversion here, so the shipped
+  // example is what is under test rather than a re-implementation of it.
+  test(
+    `${adapter.name}: a scheduled series of notifications reaches the worker`,
+    { skip: skipFor(adapter), timeout: 60000 },
+    async () => {
+      const { store, userDir } = await startTest(adapter);
+
+      try {
+        const example = readExampleFlow(
+          "examples/scheduled_notifications.json",
+        );
+        const exampleQueue = example.find(
+          (node) => node.id === "queue-scheduled-notifications",
+        );
+        const flow = [
+          { id: "tab", type: "tab", label: "scheduled notifications" },
+          {
+            ...exampleQueue,
+            ...adapter.queueConfig("queue", exampleQueue.name, store),
+          },
+          {
+            id: "cmd",
+            type: "bullmq cmd",
+            z: "tab",
+            queue: "queue",
+            x: 160,
+            y: 120,
+            wires: [["cmd-out"]],
+          },
+          {
+            id: "cmd-out",
+            type: "helper",
+            z: "tab",
+            x: 360,
+            y: 120,
+            wires: [],
+          },
+          {
+            id: "run",
+            type: "bullmq run",
+            z: "tab",
+            queue: "queue",
+            completionMode: "immediate",
+            concurrency: 1,
+            x: 160,
+            y: 240,
+            wires: [["run-out"]],
+          },
+          {
+            id: "run-out",
+            type: "helper",
+            z: "tab",
+            x: 360,
+            y: 240,
+            wires: [],
+          },
+        ];
+        await helper.load(bullNodes, flow, adapter.credentials(store));
+        const cmd = helper.getNode("cmd");
+        const cmdOut = helper.getNode("cmd-out");
+        const runOut = helper.getNode("run-out");
+
+        // The example's sample dates are in 2026 on purpose -- a real schedule
+        // is weeks out. A test cannot wait weeks, so it sends its own schedule
+        // in the same shape, which is exactly the msg.payload override the
+        // example documents. Spread over a few hundred milliseconds so these
+        // are genuinely delayed jobs promoted by BullMQ, not immediate ones.
+        const base = Date.now() + 300;
+        const at = (offsetMs) => new Date(base + offsetMs).toISOString();
+        const schedule = [
+          {
+            userId: "user_A",
+            jobs: [
+              {
+                time: at(0),
+                message: {
+                  type: "welcome",
+                  title: "Welcome!",
+                  pointsAwarded: 100,
+                },
+              },
+              {
+                time: at(150),
+                message: {
+                  type: "survey",
+                  title: "Quick Feedback",
+                  rewardCode: "THANKYOU",
+                },
+              },
+              {
+                time: at(300),
+                message: {
+                  type: "promotion",
+                  title: "Flash Sale",
+                  discountPercentage: 25,
+                },
+              },
+              {
+                time: at(450),
+                message: {
+                  type: "billing",
+                  title: "Invoice Ready",
+                  invoiceId: "INV-001",
+                  amountDue: 49.99,
+                },
+              },
+              {
+                time: at(600),
+                message: {
+                  type: "summary",
+                  title: "Monthly Wrap-up",
+                  activeDays: 14,
+                },
+              },
+            ],
+          },
+          {
+            userId: "user_B",
+            jobs: [
+              {
+                time: at(75),
+                message: {
+                  type: "security",
+                  title: "New Login Detected",
+                  device: "Chrome / Windows",
+                },
+              },
+              {
+                time: at(225),
+                message: {
+                  type: "trial_expiry",
+                  title: "Trial Ending Soon",
+                  daysLeft: 3,
+                },
+              },
+              {
+                time: at(375),
+                message: {
+                  type: "reengage",
+                  title: "We Miss You",
+                  specialOffer: "SHIPFREE",
+                },
+              },
+            ],
+          },
+        ];
+
+        const delivered = waitForInputMessages(runOut, 8, 30000);
+        const enqueued = await receiveCommand(
+          cmd,
+          cmdOut,
+          messageFromExampleFunction(example, "fn-notify-schedule", {
+            payload: schedule,
+          }),
+        );
+        assert.equal(
+          enqueued.payload.length,
+          8,
+          "addBulk must enqueue every notification in the series",
+        );
+
+        const messages = await delivered;
+        assert.equal(messages.length, 8);
+
+        // Every notification arrives intact, keyed by its own job so a
+        // duplicate or a dropped one is visible rather than averaged away.
+        const byType = new Map(
+          messages.map((msg) => [msg.payload.message.type, msg.payload]),
+        );
+        assert.deepEqual(
+          [...byType.keys()].sort(),
+          [
+            "billing",
+            "promotion",
+            "reengage",
+            "security",
+            "summary",
+            "survey",
+            "trial_expiry",
+            "welcome",
+          ],
+          "each scheduled notification must be delivered exactly once",
+        );
+        assert.equal(byType.get("welcome").userId, "user_A");
+        assert.equal(byType.get("security").userId, "user_B");
+        // The message payload survives the round trip through the store, not
+        // just its type: these are the fields a real notification carries.
+        assert.equal(byType.get("welcome").message.pointsAwarded, 100);
+        assert.equal(byType.get("promotion").message.discountPercentage, 25);
+        assert.equal(byType.get("billing").message.amountDue, 49.99);
+        assert.equal(byType.get("reengage").message.specialOffer, "SHIPFREE");
+
+        // Delivered in scheduled order, which is the point of a delay: the
+        // series was enqueued in user order, not time order.
+        const arrivalOrder = messages.map((msg) => msg.payload.message.type);
+        const scheduledOrder = schedule
+          .flatMap((user) => user.jobs)
+          .sort((a, b) => new Date(a.time) - new Date(b.time))
+          .map((job) => job.message.type);
+        assert.deepEqual(
+          arrivalOrder,
+          scheduledOrder,
+          "delayed notifications must arrive in scheduled order",
+        );
+
+        // Re-sending the same schedule must not double-book anything: the
+        // example derives a jobId per notification for exactly this reason.
+        const again = await receiveCommand(
+          cmd,
+          cmdOut,
+          messageFromExampleFunction(example, "fn-notify-schedule", {
+            payload: schedule,
+          }),
+        );
+        assert.equal(again.payload.length, 8);
+      } finally {
+        await stopTest(store, userDir);
+      }
+    },
+  );
+
+  // The cron half of the same example: a Job Scheduler whose template carries
+  // the message, so every generated job arrives at the worker with it.
+  test(
+    `${adapter.name}: a cron scheduler delivers repeating notifications`,
+    { skip: skipFor(adapter), timeout: 60000 },
+    async () => {
+      const { store, userDir } = await startTest(adapter);
+
+      try {
+        const example = readExampleFlow(
+          "examples/scheduled_notifications.json",
+        );
+        const exampleQueue = example.find(
+          (node) => node.id === "queue-scheduled-notifications",
+        );
+        const flow = [
+          { id: "tab", type: "tab", label: "cron notifications" },
+          {
+            ...exampleQueue,
+            ...adapter.queueConfig("queue", exampleQueue.name, store),
+          },
+          {
+            id: "cmd",
+            type: "bullmq cmd",
+            z: "tab",
+            queue: "queue",
+            x: 160,
+            y: 120,
+            wires: [["cmd-out"]],
+          },
+          {
+            id: "cmd-out",
+            type: "helper",
+            z: "tab",
+            x: 360,
+            y: 120,
+            wires: [],
+          },
+          {
+            id: "run",
+            type: "bullmq run",
+            z: "tab",
+            queue: "queue",
+            completionMode: "immediate",
+            concurrency: 1,
+            x: 160,
+            y: 240,
+            wires: [["run-out"]],
+          },
+          {
+            id: "run-out",
+            type: "helper",
+            z: "tab",
+            x: 360,
+            y: 240,
+            wires: [],
+          },
+        ];
+        await helper.load(bullNodes, flow, adapter.credentials(store));
+        const cmd = helper.getNode("cmd");
+        const cmdOut = helper.getNode("cmd-out");
+        const runOut = helper.getNode("run-out");
+
+        // The example ships a daily 08:00 UTC pattern, which no test can wait
+        // for. Only the cadence is overridden -- the scheduler id and the
+        // message-bearing template still come from the example -- so what is
+        // under test is the example's own payload, once per second.
+        const scheduled = messageFromExampleFunction(
+          example,
+          "fn-notify-cron",
+          {},
+        );
+        assert.equal(scheduled.cmd, "upsertJobScheduler");
+        assert.equal(scheduled.repeat.tz, "UTC");
+        scheduled.repeat = { pattern: "*/1 * * * * *", tz: "UTC" };
+
+        const repeated = waitForInputMessages(runOut, 2, 30000);
+        const upserted = await receiveCommand(cmd, cmdOut, scheduled);
+        assert.ok(upserted.payload, "upsertJobScheduler must return the job");
+
+        const messages = await repeated;
+        assert.equal(messages.length, 2);
+        for (const msg of messages) {
+          assert.equal(msg.payload.message.type, "digest");
+          assert.equal(msg.payload.message.title, "Your daily digest");
+          assert.equal(msg.payload.userId, "user_A");
+        }
+
+        // Two jobs from one scheduler, not the same job twice.
+        assert.notEqual(
+          messages[0].bull.jobId,
+          messages[1].bull.jobId,
+          "each cron iteration must be its own job",
+        );
+
+        // The scheduler outlives a redeploy, so the example's own removal
+        // command has to work.
+        const listed = await receiveCommand(cmd, cmdOut, {
+          cmd: "getJobSchedulers",
+        });
+        assert.ok(
+          listed.payload.some(
+            (entry) =>
+              entry.key === "daily-digest" || entry.id === "daily-digest",
+          ),
+          `the scheduler must be listed: ${JSON.stringify(listed.payload)}`,
+        );
+        await receiveCommand(
+          cmd,
+          cmdOut,
+          messageFromExampleFunction(example, "fn-notify-cron-remove", {}),
+        );
+        const afterRemoval = await receiveCommand(cmd, cmdOut, {
+          cmd: "getJobSchedulersCount",
+        });
+        assert.equal(afterRemoval.payload, 0);
+      } finally {
+        await stopTest(store, userDir);
       }
     },
   );
@@ -1268,8 +1788,9 @@ test(
   "redis only: worker and producer recover after Redis restarts",
   { skip: skipFor(REDIS_ADAPTER), timeout: 30000 },
   async () => {
-    let redis = await startRedis();
-    const userDir = await startHelper();
+    const started = await startTest(REDIS_ADAPTER);
+    let redis = started.store;
+    const { userDir } = started;
 
     try {
       const flow = [
@@ -1330,7 +1851,7 @@ test(
       const workerReady = once(workerConnection, "ready", {
         signal: AbortSignal.timeout(15000),
       });
-      redis = await startRedis(port);
+      redis = await REDIS_ADAPTER.start(port);
       await Promise.all([producerReady, workerReady]);
 
       const secondAdded = waitForInput(cmdOut);
@@ -1343,8 +1864,7 @@ test(
       await secondAdded;
       assert.equal((await secondRun).payload, "after restart");
     } finally {
-      await stopHelper(userDir);
-      await redis.stop();
+      await stopTest(redis, userDir);
     }
   },
 );

@@ -29,8 +29,9 @@
 - `test/serialization.test.js`: message-safe job serialization, including that no lock token escapes.
 - `test/telemetry.test.js`: opt-in telemetry wiring, including the QueueEvents exclusion.
 - `test/docker-matrix-contract.test.js`: Docker deployment fixture and runner contract.
-- `test/integration-standalone.test.js`: opt-in local Redis Node-RED runtime flow tests for add/run, manual acknowledgement, repeat schedulers, delayed jobs, priorities, rate limits, deduplication events, and flow producer jobs.
-- `test/integration-deployment.test.js`: opt-in external Redis deployment flow test used by Docker and MemoryDB.
+- `test/integration-standalone.test.js`: opt-in local Redis/PostgreSQL Node-RED runtime flows, standing command/action coverage, schedulers, delayed jobs, events, and flow producer jobs.
+- `test/integration-deployment.test.js`: opt-in external Redis/PostgreSQL deployment flow test used by Docker and MemoryDB.
+- `test/helpers/stores.js`: local Redis/PostgreSQL integration fixtures and backend adapters.
 
 ## Deployment Test Fixtures
 
@@ -42,6 +43,8 @@
 - `test/deployments/cluster-tls/`: Redis Cluster with TLS.
 - `test/deployments/sentinel-auth/`: Redis Sentinel with data-node ACL auth.
 - `test/deployments/sentinel-tls/`: Redis Sentinel with TLS for data-node and Sentinel connections.
+- `test/deployments/postgres-plain/`: PostgreSQL without TLS.
+- `test/deployments/postgres-tls/`: PostgreSQL with TLS.
 - `test/deployments/tls-certs/`: local self-signed certificates for Docker TLS fixtures.
 
 ## Agent Docs

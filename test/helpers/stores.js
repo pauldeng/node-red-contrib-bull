@@ -5,7 +5,6 @@
 // backend-neutral, and anything that cannot be must say which backend it needs
 // rather than quietly skipping.
 
-const assert = require("node:assert/strict");
 const { execFile, execFileSync } = require("node:child_process");
 const { once } = require("node:events");
 const fs = require("node:fs");
@@ -19,6 +18,7 @@ const { Queue, createPostgresBackend } = require("bullmq");
 const Redis = require("ioredis");
 
 const execFileAsync = promisify(execFile);
+const REDIS_IMAGE = "redis:7.2-alpine";
 
 // The newest PostgreSQL series (18.x). Pinned to the major rather than
 // :latest so a future major bump is a deliberate change with its own test
@@ -88,7 +88,17 @@ async function startRedis(port = 16400 + Math.floor(Math.random() * 1000)) {
     { stdio: ["ignore", "pipe", "pipe"] },
   );
 
-  await waitForRedis(port);
+  try {
+    await waitForRedis(port);
+  } catch (err) {
+    if (child.exitCode === null) {
+      const closed = once(child, "close");
+      child.kill("SIGTERM");
+      await closed;
+    }
+    fs.rmSync(dir, { recursive: true, force: true });
+    throw err;
+  }
 
   return {
     port,
@@ -101,6 +111,61 @@ async function startRedis(port = 16400 + Math.floor(Math.random() * 1000)) {
       fs.rmSync(dir, { recursive: true, force: true });
     },
   };
+}
+
+async function startRedisContainer(requestedPort) {
+  const name = `bullmq-redis-test-${process.pid}-${Date.now()}`;
+  const publishedPort = requestedPort
+    ? `127.0.0.1:${requestedPort}:6379`
+    : "127.0.0.1::6379";
+
+  await execFileAsync("docker", [
+    "run",
+    "-d",
+    "--name",
+    name,
+    "-p",
+    publishedPort,
+    REDIS_IMAGE,
+    "redis-server",
+    "--save",
+    "",
+    "--appendonly",
+    "no",
+    "--maxmemory-policy",
+    "noeviction",
+  ]);
+
+  async function stop() {
+    try {
+      await execFileAsync("docker", ["rm", "-f", name]);
+    } catch {
+      // best effort after a failed test
+    }
+  }
+
+  try {
+    let port = requestedPort;
+    if (!port) {
+      const { stdout } = await execFileAsync("docker", ["port", name, "6379"]);
+      const match = stdout.match(/:(\d+)\s*$/m);
+      if (!match) {
+        throw new Error(`could not read the published port from: ${stdout}`);
+      }
+      port = Number(match[1]);
+    }
+    await waitForRedis(port);
+    return { port, stop };
+  } catch (err) {
+    await stop();
+    throw err;
+  }
+}
+
+function startRedisStore(port) {
+  return commandAvailable("redis-server", ["--version"])
+    ? startRedis(port)
+    : startRedisContainer(port);
 }
 
 // --- PostgreSQL -------------------------------------------------------------
@@ -118,13 +183,16 @@ function postgresClient(postgres) {
   });
 }
 
-async function pgIsReadyOnce(port, user, database) {
+async function pgIsReadyOnce(name, user, database) {
   try {
-    await execFileAsync("pg_isready", [
+    await execFileAsync("docker", [
+      "exec",
+      name,
+      "pg_isready",
       "-h",
       "127.0.0.1",
       "-p",
-      String(port),
+      "5432",
       "-U",
       user,
       "-d",
@@ -142,11 +210,17 @@ async function pgIsReadyOnce(port, user, database) {
 // initdb, then restarts it. A probe that succeeds in that window is a false
 // ready, and the restart drops the connection moments later. Probing over TCP
 // and requiring two consecutive successes straddles the restart.
-async function waitForPostgresReady(port, user, database, timeoutMs = 30000) {
+async function waitForPostgresReady(
+  name,
+  port,
+  user,
+  database,
+  timeoutMs = 30000,
+) {
   const deadline = Date.now() + timeoutMs;
   let consecutive = 0;
   while (Date.now() < deadline) {
-    if (await pgIsReadyOnce(port, user, database)) {
+    if (await pgIsReadyOnce(name, user, database)) {
       consecutive += 1;
       if (consecutive >= 2) {
         return;
@@ -217,7 +291,7 @@ async function startPostgres() {
   }
 
   try {
-    await waitForPostgresReady(port, user, database);
+    await waitForPostgresReady(name, port, user, database);
   } catch (err) {
     await stop();
     throw err;
@@ -230,14 +304,12 @@ async function startPostgres() {
 
 const REDIS_ADAPTER = {
   name: "redis",
-  // A local redis-server binary is the only prerequisite, and it is the one
-  // npm run test:integration has always assumed.
   unavailable() {
-    return commandAvailable("redis-server", ["--version"])
+    return commandAvailable("redis-server", ["--version"]) || dockerAvailable()
       ? undefined
-      : "no redis-server binary on PATH";
+      : "neither redis-server nor Docker is available";
   },
-  start: startRedis,
+  start: startRedisStore,
   queueConfig(id, name, store, extra = {}) {
     return {
       id,
@@ -257,9 +329,6 @@ const REDIS_ADAPTER = {
       connection: { host: "127.0.0.1", port: store.port },
     });
   },
-  // Restarting the store process and counting raw ioredis listeners are both
-  // Redis-shaped by nature; see the Redis-only tests that use them.
-  supports: { serverRestart: true, rawClientListeners: true },
 };
 
 const POSTGRES_ADAPTER = {
@@ -267,9 +336,6 @@ const POSTGRES_ADAPTER = {
   unavailable() {
     if (!dockerAvailable()) {
       return "Docker is not available, and the PostgreSQL fixture is a container";
-    }
-    if (!commandAvailable("pg_isready", ["--version"])) {
-      return "no pg_isready binary on PATH for the readiness probe";
     }
     try {
       require.resolve("pg");
@@ -318,43 +384,17 @@ const POSTGRES_ADAPTER = {
       createPostgresBackend,
     );
   },
-  supports: { serverRestart: false, rawClientListeners: false },
 };
 
 const ADAPTERS = [REDIS_ADAPTER, POSTGRES_ADAPTER];
-
-// A backend that cannot run here is reported, not silently dropped: a suite
-// that quietly shrinks to one backend reads as "both passed".
-function describeSkips() {
-  return ADAPTERS.map((adapter) => ({
-    name: adapter.name,
-    reason: adapter.unavailable(),
-  })).filter((entry) => entry.reason);
-}
-
-function assertNoUnexpectedSkips(required) {
-  for (const name of required) {
-    const adapter = ADAPTERS.find((candidate) => candidate.name === name);
-    assert.ok(adapter, `unknown backend ${name}`);
-    assert.equal(
-      adapter.unavailable(),
-      undefined,
-      `backend ${name} was required but is unavailable`,
-    );
-  }
-}
 
 module.exports = {
   ADAPTERS,
   POSTGRES_ADAPTER,
   POSTGRES_IMAGE,
   REDIS_ADAPTER,
-  assertNoUnexpectedSkips,
-  describeSkips,
   dockerAvailable,
   postgresClient,
   startPostgres,
-  startRedis,
-  waitForPostgresReady,
   waitForRedis,
 };

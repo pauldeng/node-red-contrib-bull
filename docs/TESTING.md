@@ -20,13 +20,17 @@ Use `node-red-node-test-helper` for flow-level tests. Runtime coverage should lo
 - `bullmq flow`;
 - BullMQ v6 Job Scheduler commands.
 
-The current standalone Redis integration suite is opt-in:
+The local Redis/PostgreSQL integration suite is opt-in:
 
 ```sh
 npm run test:integration
 ```
 
-It starts a temporary local `redis-server`, loads real Node-RED flows, and verifies:
+It runs each backend-neutral flow against a temporary local `redis-server`
+(falling back to a temporary Redis container) and a temporary PostgreSQL
+container. When neither backend prerequisite is available, its tests are
+reported as skipped with the reason rather than silently omitted.
+It verifies:
 
 - `bullmq cmd` add/run behavior;
 - manual `bullmq run` acknowledgement through `bullmq job`;
@@ -34,10 +38,14 @@ It starts a temporary local `redis-server`, loads real Node-RED flows, and verif
 - delayed-job commands;
 - priority listing and counts;
 - global rate-limit commands;
+- every `msg.cmd` and `bullmq job` action, derived from their runtime switches;
 - deduplication commands and `bullmq events` delivery;
 - `bullmq flow` parent/child and bulk FlowProducer output;
 - worker and producer recovery after Redis restarts;
 - graceful Node-RED shutdown while a manual job is active.
+- one-off delayed notification series and cron notification schedulers.
+
+The Redis restart and raw-listener checks remain explicitly Redis-only.
 
 ## Playwright
 
@@ -57,7 +65,8 @@ Use Docker for the topology matrix:
 npm run test:deployments
 ```
 
-The runner starts each fixture, waits for Redis readiness, runs `test/integration-deployment.test.js`, and removes volumes between deployments.
+The runner starts each fixture, waits for Redis or PostgreSQL readiness, runs
+`test/integration-deployment.test.js`, and removes volumes between deployments.
 
 Current executable fixtures:
 
@@ -68,6 +77,8 @@ Current executable fixtures:
 - `cluster-tls`: two-node Redis Cluster with TLS and BullMQ `{bull}` prefix coverage
 - `sentinel-auth`: Redis master, two replicas, and three Sentinels with data-node ACL auth
 - `sentinel-tls`: Redis master, two replicas, and three TLS-enabled Sentinels
+- `postgres-plain`: PostgreSQL without TLS
+- `postgres-tls`: PostgreSQL with the Docker-only self-signed TLS fixture
 
 The shared deployment test proves Node-RED load, credential-backed auth, add/run delivery, native scheduler creation/removal, absolute scheduler minute/second metadata, live cancellation retries and `cancelAllJobs`, and OpenTelemetry add/process spans plus completed/duration metrics. TLS fixtures use local self-signed test certificates and disable certificate verification for those Docker-only deployments. MemoryDB remains the certificate-verified TLS deployment path.
 
