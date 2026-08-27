@@ -1,0 +1,18 @@
+# The PostgreSQL backend without TLS: the fixture the full parameterized
+# command suite runs against. POSTGRES_PASSWORD is mandatory for this image --
+# it refuses to initialise without one -- so it is always set here rather than
+# left to a default, unlike the Redis fixtures where auth is a variant.
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:18-alpine}
+    # The image's own recommendation. PostgreSQL puts parallel query and hash
+    # join workspace in shared memory, and Docker's 64mb default is small
+    # enough to surface as unexplained backend crashes rather than an error
+    # naming shared memory.
+    shm_size: 128mb
+    environment:
+      POSTGRES_USER: ${BULLMQ_USERNAME:-node_red}
+      POSTGRES_PASSWORD: ${BULLMQ_PASSWORD:-node-red-pass}
+      POSTGRES_DB: ${BULLMQ_DATABASE:-bullmq}
+    ports:
+      - "127.0.0.1:${BULLMQ_POSTGRES_PLAIN_PORT:-15432}:5432"

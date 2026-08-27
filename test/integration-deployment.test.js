@@ -26,6 +26,28 @@ function queueName() {
 }
 
 function externalQueueNode(name, id = "queue") {
+  if ((process.env.BULLMQ_BACKEND || "redis") === "postgres") {
+    // PostgreSQL has no topology dimension: no Cluster, no Sentinel, and the
+    // Redis key prefix is ignored, so those variables have no counterpart
+    // here. What it adds instead is the database, schema, pool size and
+    // migration switch.
+    return {
+      id,
+      type: "bullmq-queue-server",
+      name,
+      backend: "postgres",
+      address: process.env.BULLMQ_HOST || "127.0.0.1",
+      port: process.env.BULLMQ_PORT || "5432",
+      database: process.env.BULLMQ_DATABASE || "",
+      username: process.env.BULLMQ_USERNAME || "",
+      schema: process.env.BULLMQ_SCHEMA || "",
+      max: process.env.BULLMQ_POOL_MAX || "",
+      migrate: envBoolean("BULLMQ_MIGRATE", true),
+      tls: envBoolean("BULLMQ_TLS", false),
+      tlsRejectUnauthorized: envBoolean("BULLMQ_TLS_REJECT_UNAUTHORIZED", true),
+      tlsServerName: process.env.BULLMQ_TLS_SERVER_NAME || "",
+    };
+  }
   const mode = process.env.BULLMQ_REDIS_MODE || "single";
   return {
     id,

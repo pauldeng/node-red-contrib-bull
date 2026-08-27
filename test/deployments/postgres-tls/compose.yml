@@ -1,0 +1,30 @@
+# The PostgreSQL backend over TLS. Built from the sibling Dockerfile rather
+# than bind-mounting the certificates: PostgreSQL refuses to start unless its
+# private key is owned by the server user and not group/world readable, and a
+# bind-mounted repo file keeps its host ownership. The build context is the
+# parent directory because the Dockerfile copies the repo's shared
+# tls-certs/ fixture.
+#
+# Depth matches the Redis TLS fixtures: this proves the connection is
+# established over TLS and that jobs round-trip across it. Certificate
+# verification against a real CA, and the ssl object this package builds, are
+# pinned by test/integration-postgres-tls.test.js.
+services:
+  postgres:
+    build:
+      context: ..
+      dockerfile: postgres-tls/Dockerfile
+    shm_size: 128mb
+    environment:
+      POSTGRES_USER: ${BULLMQ_USERNAME:-node_red}
+      POSTGRES_PASSWORD: ${BULLMQ_PASSWORD:-node-red-pass}
+      POSTGRES_DB: ${BULLMQ_DATABASE:-bullmq}
+    command:
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/etc/postgresql/tls/server.crt
+      - -c
+      - ssl_key_file=/etc/postgresql/tls/server.key
+    ports:
+      - "127.0.0.1:${BULLMQ_POSTGRES_TLS_PORT:-15433}:5432"
