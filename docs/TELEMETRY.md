@@ -44,7 +44,7 @@ BullMQ emits:
 
 ## `bullmq events` Is Not Traced
 
-BullMQ 6.2.1 types `QueueEventsOptions` as `Omit<QueueBaseOptions, 'telemetry'>`. `QueueEvents` accepts no telemetry client at all, so `bullmq events` never emits spans or metrics regardless of the config-node toggles.
+BullMQ 6.3.1 types `QueueEventsOptions` as `Omit<QueueBaseOptions, 'telemetry'>`. `QueueEvents` accepts no telemetry client at all, so `bullmq events` never emits spans or metrics regardless of the config-node toggles.
 
 ## Zero-Dependency Alternative
 

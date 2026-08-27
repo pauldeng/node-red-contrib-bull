@@ -13,7 +13,7 @@ used here only for the one-time first publish.)
 
 1. Confirm `package.json` has the intended `version` and the name `@pauldeng/node-red-contrib-bullmq`.
 2. Confirm the GitHub repository is `https://github.com/pauldeng/node-red-contrib-bullmq`.
-3. Confirm BullMQ is pinned to exactly `6.2.1`.
+3. Confirm BullMQ is pinned to exactly `6.3.1`.
 4. Confirm no examples, docs, fixtures, or logs contain Redis, Sentinel, or MemoryDB secrets.
 5. Update `CHANGELOG.md` for the new version.
 6. For a major version bump, confirm `CHANGELOG.md` names every breaking change and `docs/MIGRATION.md` covers the upgrade path before tagging.

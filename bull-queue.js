@@ -123,7 +123,7 @@ async function forceDisconnect(resource) {
     disconnectClient(resource);
     return;
   }
-  // BullMQ 6.2.1's public disconnect() can await the same never-ready promise
+  // BullMQ 6.3.1's public disconnect() can await the same never-ready promise
   // as close(), which would spend a second shutdown budget after the first one
   // already expired. The exact BullMQ pin makes this one backend escape hatch
   // deliberate and testable until upstream disconnect becomes bounded.
@@ -139,7 +139,7 @@ async function forceDisconnect(resource) {
       backend.blockingConnection && backend.blockingConnection._client,
     );
   }
-  // Measured on installed BullMQ 6.2.1: a Worker's close() never reaches this
+  // Measured on installed BullMQ 6.3.1: a Worker's close() never reaches this
   // point on its own here, because its very first cleanup step awaits the
   // same stuck connection above. That means the lock-renewal timer it starts
   // on construction (independent of connection state) is never cancelled by

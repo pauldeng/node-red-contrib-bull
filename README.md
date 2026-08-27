@@ -8,7 +8,7 @@
 
 Node-RED nodes for BullMQ-backed Redis job queues.
 
-This package targets BullMQ 6.2.1 and Node-RED 5. Version 2 is a breaking release: it uses BullMQ v6 node names, commands, and Job Scheduler inputs only.
+This package targets BullMQ 6.3.1 and Node-RED 5. Version 2 is a breaking release: it uses BullMQ v6 node names, commands, and Job Scheduler inputs only.
 
 ## Installation
 
@@ -27,7 +27,7 @@ Repository: <https://github.com/pauldeng/node-red-contrib-bullmq>
 - Node.js 22.9+
 - Redis with `maxmemory-policy=noeviction`
 - Durable Redis persistence; for self-managed Redis, BullMQ recommends Append Only File (AOF) persistence
-- BullMQ 6.2.1
+- BullMQ 6.3.1
 
 BullMQ stores job data in clear text. Do not put secrets or other sensitive data in a job payload unless the sensitive fields are encrypted before the job is added.
 
