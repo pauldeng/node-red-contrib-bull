@@ -2,17 +2,22 @@
 
 ## `bullmq-queue-server`
 
-Configures queue name, Redis deployment, credentials, TLS, and BullMQ prefix.
+Configures queue name, backend, connection, credentials, and TLS.
 
-Deployment modes:
+`backend` selects where BullMQ stores the queue. Absent or blank means `redis`, so a flow saved before the field existed keeps working unchanged.
+
+- `redis`: the deployment modes, key prefix, and Redis database number below.
+- `postgres`: `database`, `schema`, `max` (pool size), and `migrate` instead. Needs the optional peer dependency `pg` installed. See [CONNECTIONS.md](CONNECTIONS.md#postgresql).
+
+Deployment modes (Redis only; hidden for `postgres`):
 
 - `single`: standalone Redis.
 - `cluster`: Redis Cluster and AWS MemoryDB.
 - `sentinel`: Redis Sentinel.
 
-Cluster and MemoryDB prefixes must contain a Redis hash tag. `{bull}` is the default. Independent queues may use different tags — `{orders}`, `{emails}` — to spread load across cluster nodes. Prefixes in one `bullmq flow` tree or bulk flow batch must contain the same hash tag so their atomic Redis operations stay in one slot. Each worker must use the exact prefix assigned to its queue in the flow.
+Redis only. Cluster and MemoryDB prefixes must contain a Redis hash tag. `{bull}` is the default. Independent queues may use different tags — `{orders}`, `{emails}` — to spread load across cluster nodes. Prefixes in one `bullmq flow` tree or bulk flow batch must contain the same hash tag so their atomic Redis operations stay in one slot. Each worker must use the exact prefix assigned to its queue in the flow.
 
-`removeOnComplete` and `removeOnFail` set queue-level auto-removal as BullMQ `defaultJobOptions`, keeping that many of the newest jobs in each state. New config nodes default to keeping 1000 completed and 5000 failed jobs. A blank field keeps every job, which is BullMQ's own default and grows Redis without bound.
+`removeOnComplete` and `removeOnFail` set queue-level auto-removal as BullMQ `defaultJobOptions`, keeping that many of the newest jobs in each state. New config nodes default to keeping 1000 completed and 5000 failed jobs. A blank field keeps every job, which is BullMQ's own default and grows the backing store without bound.
 
 For `bullmq cmd`, `msg.jobopts` overrides these defaults. For `bullmq flow`, the defaults apply to every queue named in the flow tree; `msg.flowopts.queuesOptions[queueName].defaultJobOptions` overrides the config for one queue, and the job's own `opts` has final precedence.
 

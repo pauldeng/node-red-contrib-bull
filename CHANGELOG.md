@@ -5,6 +5,11 @@ All notable changes to this package are documented here.
 ## 2.0.0 - 2026-08-26
 
 - Upgraded to BullMQ 6.3.1 (from 5.80.9); ioredis stays pinned at 5.11.1. Persisted BullMQ v5 repeatable-job data is not migrated to v6 -- remove it before upgrading. See docs/MIGRATION.md.
+- Added a PostgreSQL backend. `bullmq-queue-server` gains a `backend` selector; `postgres` replaces the Redis topology, key prefix, and database-number fields with `database`, `schema`, `max` (pool size), and `migrate`. A config node with no `backend` property is Redis, so a flow saved against an earlier release keeps working. See docs/CONNECTIONS.md.
+- `pg` is declared as an optional peer dependency and is not installed with this package. Install it separately (`npm install pg`) before selecting the backend; a missing install is reported once per config node on first use, naming the command, rather than at load.
+- PostgreSQL migrations run on connect by default, creating and updating BullMQ's schema under a PostgreSQL advisory lock so concurrent queue, worker, and event starts converge on one migration. With migrations off, a missing or outdated schema is reported as an actionable error and the node stays usable.
+- TLS serves both backends. On PostgreSQL, node-postgres derives the TLS server name from the connection host, so the server-name override applies only when the host is a literal IP address.
+- PostgreSQL limitations, recorded rather than worked around: no Cluster or Sentinel, no key prefix, event rows are never trimmed because BullMQ's adapter ignores `maxEvents`, and three adapter operations are unimplemented upstream (`trimEvents`, `removeDeprecatedPriorityKey`, and `paginate` outside a flow's dependency keys). None is on a path these nodes use.
 - Raised the runtime floor to Node.js 22.9+ and Node-RED 5.x, dropping Node.js 18/20 and Node-RED 4.1.x support.
 - Breaking: replaced all `bull*` node type names with `bullmq*` names; old flow types are not registered.
 - Breaking: removed `msg.command`, `msg.jobid`, plaintext credential fallbacks, and the `memorydb` deployment alias.
@@ -16,6 +21,8 @@ All notable changes to this package are documented here.
 - Added `isPaused`, `isMaxed`, and `getVersion` to `bullmq cmd`.
 - Added opt-in OpenTelemetry tracing and metrics for `Queue`, `Worker`, and `FlowProducer` (`telemetry`, `telemetryServiceName`, `telemetryMetrics` on `bullmq-queue-server`), off by default. See docs/TELEMETRY.md.
 - Rejected `addBulk` entries that carry repeat options, pointing at the Job Scheduler commands instead.
+- Added a `postgres_backend.json` example, and a `scheduled_notifications.json` example covering a delayed notification series built from ISO-8601 instants plus a cron Job Scheduler that carries its message in the template.
+- The integration suite runs its backend-neutral flows against both Redis and PostgreSQL, with standing live coverage for every `msg.cmd` and every `bullmq job` action, and the Docker matrix gains `postgres-plain` and `postgres-tls` fixtures.
 - Updated development dependencies: @playwright/test 1.62.1, node-red 5.0.4, prettier 3.9.6.
 
 ## 1.0.3 - 2026-07-20

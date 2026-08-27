@@ -1,6 +1,6 @@
 # Agent Guide
 
-BullMQ v6-backed Redis job queue nodes for Node-RED. Version 2 is a breaking API with no Bull v4 or BullMQ v5 compatibility aliases.
+BullMQ v6 job queue nodes for Node-RED, backed by Redis or PostgreSQL. Version 2 is a breaking API with no Bull v4 or BullMQ v5 compatibility aliases.
 
 ## Before Any Change
 
@@ -24,7 +24,7 @@ Both gate CI on every pull request, so treat them as the floor for any change. E
 | runtime boundaries, resource ownership   | `docs/ARCHITECTURE.md`    |
 | public node contracts and message shapes | `docs/NODE_GUIDE.md`      |
 | `msg.cmd` behavior                       | `docs/COMMANDS.md`        |
-| Redis options, TLS, cluster, sentinel    | `docs/CONNECTIONS.md`     |
+| backend choice, TLS, cluster, sentinel   | `docs/CONNECTIONS.md`     |
 | OpenTelemetry tracing and metrics        | `docs/TELEMETRY.md`       |
 | tests and verification                   | `docs/TESTING.md`         |
 | upgrading from older package versions    | `docs/MIGRATION.md`       |

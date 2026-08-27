@@ -42,10 +42,10 @@ It verifies:
 - deduplication commands and `bullmq events` delivery;
 - `bullmq flow` parent/child and bulk FlowProducer output;
 - worker and producer recovery after Redis restarts;
-- graceful Node-RED shutdown while a manual job is active.
+- graceful Node-RED shutdown while a manual job is active;
 - one-off delayed notification series and cron notification schedulers.
 
-The Redis restart and raw-listener checks remain explicitly Redis-only.
+One test is explicitly Redis-only and says so in its name: the restart check, which stops and restarts the store process on the same port and waits on raw ioredis `ready` events. The PostgreSQL fixture is a container on a Docker-assigned port with no raw client to observe.
 
 ## Playwright
 

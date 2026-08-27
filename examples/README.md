@@ -25,6 +25,15 @@ Small BullMQ feature examples that all use one local Redis queue config named `b
 
 Point `bullmq-features` at your Redis deployment before deploying the flow.
 
+## `postgres_backend.json`
+
+The same add/run flow on the PostgreSQL backend, for the `pgcasts` queue. It exists to show what changes when the backend does: only the queue config node.
+
+- The config node sets `backend` to `postgres` with `database`, `username`, `schema`, `max` and `migrate`, and leaves the Redis-only fields (`deployment`, `db`, `clusterNodes`, `sentinels`, `prefix`) empty so switching the selector back to Redis needs no cleanup.
+- `add order job` and `handle order` use exactly the same `msg.cmd`, job options and worker message shape as the Redis examples. Nothing in a producer or worker flow is backend-specific.
+- Install `pg` first (`npm install pg`). It is an optional peer dependency, so a missing install is reported on first use with the command to run.
+- Set the password on the config node before deploying; a shipped flow carries no credential.
+
 ## `scheduled_notifications.json`
 
 Scheduling a series of user notifications on the `notifycasts` queue, and delivering each one to a worker. Both halves share one queue and one worker.

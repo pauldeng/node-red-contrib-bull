@@ -17,7 +17,7 @@ test("package metadata targets BullMQ, Node.js 22.9+, and Node-RED 5.x", () => {
   assert.equal(packageJson.main, "bull-queue.js");
   assert.equal(
     packageJson.description,
-    "BullMQ-backed Redis job queue nodes for Node-RED",
+    "BullMQ job queue nodes for Node-RED, backed by Redis or PostgreSQL",
   );
   assert.equal(packageJson.repository?.type, "git");
   assert.equal(
@@ -262,7 +262,7 @@ test("GitHub community templates collect actionable reports", () => {
     "CPU architecture",
     "BullMQ version",
     "Error message",
-    "Redis deployment",
+    "Deployment",
     "Database server",
     "Database version",
     "Valkey",
