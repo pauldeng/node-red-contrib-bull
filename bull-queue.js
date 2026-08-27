@@ -4,9 +4,14 @@ const {
   createPostgresBackend,
   DelayedError,
   FlowProducer,
+  MINIMUM_POSTGRES_VERSION,
   Queue,
   QueueEvents,
+  RECOMMENDED_POSTGRES_VERSION,
+  SchemaMigrationRequiredError,
+  SchemaVersionMismatchError,
   UnrecoverableError,
+  UnsupportedPostgresVersionError,
   WaitingError,
   Worker,
 } = require("bullmq");
@@ -299,14 +304,60 @@ function setDisconnected(node) {
   node.status({ fill: "red", shape: "ring", text: "disconnected" });
 }
 
-function attachErrorListener(resource, node) {
+function attachErrorListener(resource, node, startupFailureOwner) {
   if (!resource || typeof resource.on !== "function") {
-    return;
+    return () => {};
   }
+  let ready = false;
   resource.on("error", (err) => {
     setDisconnected(node);
-    node.error(err);
+    if (startupFailureOwner && !ready) {
+      startupFailureOwner.reportBackendFailure(err);
+    } else {
+      node.error(err);
+    }
   });
+  return function markReady() {
+    ready = true;
+  };
+}
+
+// Turns a rejected backend readiness promise -- or a synchronous resource
+// construction failure, since BullMQ's postgres factory validates and loads
+// its optional `pg` dependency before any I/O -- into one of a handful of
+// actionable categories, so a Node-RED user is told what to DO rather than
+// just that the backend is unavailable. The category string is also the
+// dedup key each config node latches on; see node.reportBackendFailure.
+function describeBackendFailure(err) {
+  const message = err && err.message ? err.message : String(err);
+  if (err instanceof SchemaMigrationRequiredError) {
+    return {
+      category: "schema-migration-required",
+      message: `${message} Set the queue configuration node's "migrate" property to true so this node initialises the schema, or run BullMQ's PostgreSQL migrations against the database yourself before deploying.`,
+    };
+  }
+  if (err instanceof SchemaVersionMismatchError) {
+    return {
+      category: "schema-version-mismatch",
+      message: `${message} Upgrade this Node-RED package to a release that uses the required BullMQ major; PostgreSQL schema downgrades are not supported.`,
+    };
+  }
+  if (err instanceof UnsupportedPostgresVersionError) {
+    return {
+      category: "unsupported-postgres-version",
+      message: `${message} BullMQ's PostgreSQL backend requires server version ${MINIMUM_POSTGRES_VERSION} or newer (${RECOMMENDED_POSTGRES_VERSION}+ recommended).`,
+    };
+  }
+  // BullMQ lazily requires the optional `pg` package and, when it cannot be
+  // resolved, throws its own actionable error rather than a raw
+  // MODULE_NOT_FOUND -- reuse that message instead of wrapping it again.
+  if (message.includes("npm install pg")) {
+    return { category: "pg-missing", message };
+  }
+  return {
+    category: "generic",
+    message: `BullMQ backend is unavailable: ${message}`,
+  };
 }
 
 function createJobMessage(job, queueName, extraBull = {}) {
@@ -339,6 +390,21 @@ module.exports = function registerBullMQNodes(RED) {
     node.producerConnection = null;
     node.telemetry = undefined;
     node.telemetryUnavailable = false;
+
+    // Categories already reported for this config node. BullMQ builds one
+    // backend per resource (Queue/Worker/QueueEvents/FlowProducer each get
+    // their own pool), so the same misconfiguration can be observed from
+    // more than one of them -- this latch is what keeps one deploy at one
+    // report per distinct failure instead of one per resource that hit it.
+    node.backendFailures = new Set();
+    node.reportBackendFailure = function reportBackendFailure(err) {
+      const { category, message } = describeBackendFailure(err);
+      if (node.backendFailures.has(category)) {
+        return;
+      }
+      node.backendFailures.add(category);
+      node.error(message);
+    };
 
     // Lazily constructs (and caches) the one BullMQOtel instance shared by
     // this config node's Queue/Worker/FlowProducer. Deferred until first
@@ -407,6 +473,22 @@ module.exports = function registerBullMQNodes(RED) {
       await closeResourcePair(owner, connection);
     };
 
+    // BullMQ's postgres factory validates the schema name and synchronously
+    // loads the optional `pg` module (createPostgresBackend -> new
+    // PostgresConnection) before any resource exists, so a bad schema name or
+    // a missing `pg` install throws out of `new Queue/Worker/QueueEvents/
+    // FlowProducer(...)` itself rather than through waitUntilReady(). Catch
+    // that here instead of crashing the owning node's constructor.
+    function buildPostgresResource(build) {
+      try {
+        return build();
+      } catch (err) {
+        publishBackendStatus("disconnected");
+        node.reportBackendFailure(err);
+        return undefined;
+      }
+    }
+
     node.getQueue = function getQueue() {
       if (!node.queue) {
         // BullMQ owns every PostgreSQL connection (a pool plus a dedicated
@@ -429,8 +511,18 @@ module.exports = function registerBullMQNodes(RED) {
           queueOptions.defaultJobOptions = node.config.defaultJobOptions;
         }
         node.queue = isPostgres
-          ? new Queue(node.config.queueName, queueOptions, createPostgresBackend)
+          ? buildPostgresResource(
+              () =>
+                new Queue(
+                  node.config.queueName,
+                  queueOptions,
+                  createPostgresBackend,
+                ),
+            )
           : new Queue(node.config.queueName, queueOptions);
+        if (!node.queue) {
+          return null;
+        }
         node.watchBackend(node.queue.getBackend());
         // No connection of our own on postgres -- the owner is tracked with no
         // value so close/redeploy still walks it, but has nothing raw to close.
@@ -483,21 +575,12 @@ module.exports = function registerBullMQNodes(RED) {
           // constructor swallows the same rejection. Without this the node
           // would sit on "connecting" forever with nothing reported. The
           // sibling bullmq events and bullmq flow nodes handle their own
-          // waitUntilReady() rejection the same way.
-          // Phase 4 will add the reason reporting (one node.error per config
-          // node, keyed by failure category) on top of this status change.
+          // waitUntilReady() rejection through node.reportBackendFailure too,
+          // so the same failure seen from more than one resource still lands
+          // as one report.
           if (node.backendStatus === "connecting") {
             publishBackendStatus("disconnected");
-            // Say why, not just that. On PostgreSQL this is where an
-            // unreachable database, a bad password, a missing pg module, or a
-            // schema/migration failure surfaces -- and nothing else reports it,
-            // because bootstrap() rejects without emitting. Phase 4 replaces
-            // this with per-category messages behind a latch keyed by failure
-            // type; the latch matters once four backends can each fail the
-            // same way, which is why this stays a single report for now.
-            node.error(
-              `BullMQ backend is unavailable: ${err && err.message ? err.message : err}`,
-            );
+            node.reportBackendFailure(err);
           }
         }
       })();
@@ -543,14 +626,19 @@ module.exports = function registerBullMQNodes(RED) {
         ...options,
       };
       const worker = isPostgres
-        ? new Worker(
-            node.config.queueName,
-            processor,
-            workerOptions,
-            createPostgresBackend,
+        ? buildPostgresResource(
+            () =>
+              new Worker(
+                node.config.queueName,
+                processor,
+                workerOptions,
+                createPostgresBackend,
+              ),
           )
         : new Worker(node.config.queueName, processor, workerOptions);
-      node.resources.set(worker, connection);
+      if (worker) {
+        node.resources.set(worker, connection);
+      }
       return worker;
     };
 
@@ -566,13 +654,18 @@ module.exports = function registerBullMQNodes(RED) {
         "events"
       );
       const queueEvents = isPostgres
-        ? new QueueEvents(
-            node.config.queueName,
-            queueEventsOptions,
-            createPostgresBackend,
+        ? buildPostgresResource(
+            () =>
+              new QueueEvents(
+                node.config.queueName,
+                queueEventsOptions,
+                createPostgresBackend,
+              ),
           )
         : new QueueEvents(node.config.queueName, queueEventsOptions);
-      node.resources.set(queueEvents, connection);
+      if (queueEvents) {
+        node.resources.set(queueEvents, connection);
+      }
       return queueEvents;
     };
 
@@ -588,14 +681,19 @@ module.exports = function registerBullMQNodes(RED) {
         "producer"
       );
       const flowProducer = isPostgres
-        ? new FlowProducer(flowProducerOptions, createPostgresBackend)
+        ? buildPostgresResource(
+            () => new FlowProducer(flowProducerOptions, createPostgresBackend),
+          )
         : new FlowProducer(flowProducerOptions);
-      node.resources.set(flowProducer, connection);
+      if (flowProducer) {
+        node.resources.set(flowProducer, connection);
+      }
       return flowProducer;
     };
 
     node.on("close", async function onClose(removed, done) {
       try {
+        node.backendFailures.clear();
         const resources = Array.from(node.resources.entries()).reverse();
         node.resources.clear();
         await Promise.all(
@@ -659,7 +757,16 @@ module.exports = function registerBullMQNodes(RED) {
       node.bullConn.readBackendStatus(applyBackendStatus);
     node.on("input", async function onInput(msg, send, done) {
       try {
-        const result = await dispatchCommand(node.bullConn.getQueue(), msg);
+        const queue = node.bullConn.getQueue();
+        if (!queue) {
+          // Construction failed synchronously (missing pg, bad schema name).
+          // The config node already reported why; say something useful here
+          // rather than letting queue.add() throw a bare TypeError per message.
+          throw new Error(
+            "BullMQ queue is unavailable; see the queue configuration node's error",
+          );
+        }
+        const result = await dispatchCommand(queue, msg);
         msg.payload = result;
         nodeSend(node, send, msg);
         nodeDone(node, done);
@@ -687,8 +794,6 @@ module.exports = function registerBullMQNodes(RED) {
       return;
     }
 
-    node.bullQueue.register(node);
-
     const workerOptions = {
       concurrency: parsePositiveInteger(n.concurrency, 1, "Concurrency"),
       maxStartedAttempts: parsePositiveInteger(
@@ -711,6 +816,13 @@ module.exports = function registerBullMQNodes(RED) {
           "Limiter Duration"
         ),
       };
+    }
+    if (node.bullQueue.config.backend === "postgres") {
+      // A permanent readiness error (for example an unmigrated schema) makes
+      // BullMQ's autorun loop retry without delay. Start only after the one
+      // readiness promise succeeds so a configuration error cannot spin the
+      // Node-RED runtime.
+      workerOptions.autorun = false;
     }
 
     // Arity 3 tells BullMQ to create and track a per-job AbortController
@@ -749,8 +861,55 @@ module.exports = function registerBullMQNodes(RED) {
     };
 
     node.worker = node.bullQueue.createWorker(processor, workerOptions, node);
-    attachErrorListener(node.worker, node);
-    node.worker.on("ready", () => setConnected(node));
+    // createWorker reports and returns undefined on a synchronous backend
+    // construction failure (e.g. postgres selected with pg not installed);
+    // nothing was created, so there is nothing to close on this node's own
+    // close, and no listener setup below would have anything to attach to.
+    if (!node.worker) {
+      // Register only on success: registering first would leave the config
+      // node holding this node with no close handler to deregister it.
+      setDisconnected(node);
+      return;
+    }
+    node.bullQueue.register(node);
+    const workerStartupFailureOwner =
+      node.bullQueue.config.backend === "postgres" ? node.bullQueue : undefined;
+    const markWorkerReady = attachErrorListener(
+      node.worker,
+      node,
+      workerStartupFailureOwner,
+    );
+    if (workerStartupFailureOwner) {
+      let workerReady = false;
+      async function startPostgresWorker() {
+        try {
+          await node.worker.waitUntilReady();
+          if (node.worker.closing) {
+            return;
+          }
+          workerReady = true;
+          markWorkerReady();
+          setConnected(node);
+          await node.worker.run();
+        } catch (err) {
+          if (node.worker.closing) {
+            return;
+          }
+          setDisconnected(node);
+          if (workerReady) {
+            node.error(err);
+          } else {
+            workerStartupFailureOwner.reportBackendFailure(err);
+          }
+        }
+      }
+      void startPostgresWorker();
+    } else {
+      node.worker.on("ready", () => {
+        markWorkerReady();
+        setConnected(node);
+      });
+    }
     node.worker.on("closed", () => setDisconnected(node));
     setConnecting(node);
 
@@ -915,9 +1074,22 @@ module.exports = function registerBullMQNodes(RED) {
       return;
     }
 
-    node.bullConn.register(node);
     node.queueEvents = node.bullConn.createQueueEvents(node);
-    attachErrorListener(node.queueEvents, node);
+    if (!node.queueEvents) {
+      // Construction failed synchronously and already reported why. Register
+      // only on success: registering first would leave the config node holding
+      // this node in its users map with no close handler to deregister it.
+      setDisconnected(node);
+      return;
+    }
+    node.bullConn.register(node);
+    const eventsStartupFailureOwner =
+      node.bullConn.config.backend === "postgres" ? node.bullConn : undefined;
+    const markQueueEventsReady = attachErrorListener(
+      node.queueEvents,
+      node,
+      eventsStartupFailureOwner,
+    );
     const events = parseEventFilter(n.events);
     for (const event of events) {
       node.queueEvents.on(event, (payload, eventId) => {
@@ -936,10 +1108,15 @@ module.exports = function registerBullMQNodes(RED) {
       try {
         setConnecting(node);
         await node.queueEvents.waitUntilReady();
+        markQueueEventsReady();
         setConnected(node);
       } catch (err) {
         setDisconnected(node);
-        node.error(err);
+        if (eventsStartupFailureOwner) {
+          eventsStartupFailureOwner.reportBackendFailure(err);
+        } else {
+          node.error(err);
+        }
       }
     }
     updateReadyStatus();
@@ -967,17 +1144,35 @@ module.exports = function registerBullMQNodes(RED) {
       return;
     }
 
-    node.bullConn.register(node);
     node.flowProducer = node.bullConn.createFlowProducer(node);
-    attachErrorListener(node.flowProducer, node);
+    if (!node.flowProducer) {
+      // Construction failed synchronously and already reported why. Register
+      // only on success: registering first would leave the config node holding
+      // this node in its users map with no close handler to deregister it.
+      setDisconnected(node);
+      return;
+    }
+    node.bullConn.register(node);
+    const flowStartupFailureOwner =
+      node.bullConn.config.backend === "postgres" ? node.bullConn : undefined;
+    const markFlowProducerReady = attachErrorListener(
+      node.flowProducer,
+      node,
+      flowStartupFailureOwner,
+    );
     async function updateReadyStatus() {
       try {
         setConnecting(node);
         await node.flowProducer.waitUntilReady();
+        markFlowProducerReady();
         setConnected(node);
       } catch (err) {
         setDisconnected(node);
-        node.error(err);
+        if (flowStartupFailureOwner) {
+          flowStartupFailureOwner.reportBackendFailure(err);
+        } else {
+          node.error(err);
+        }
       }
     }
     updateReadyStatus();

@@ -5,6 +5,13 @@ const { promisify } = require("node:util");
 const test = require("node:test");
 
 const registerBullMQNodes = require("../bull-queue");
+const {
+  MINIMUM_POSTGRES_VERSION,
+  RECOMMENDED_POSTGRES_VERSION,
+  SchemaMigrationRequiredError,
+  SchemaVersionMismatchError,
+  UnsupportedPostgresVersionError,
+} = require("bullmq");
 
 function createRED(options = {}) {
   const registered = new Map();
@@ -252,7 +259,11 @@ test("config node createFlowProducer does not attach its own error listener", as
     // second listener that would double-report flow errors.
     assert.equal(flowProducer.listenerCount("error"), 0);
   } finally {
-    await flowProducer.close().catch(() => {});
+    try {
+      await flowProducer.close();
+    } catch {
+      // best effort test cleanup
+    }
   }
 });
 
@@ -303,16 +314,20 @@ test("bullmq run reports worker errors on its own node status", () => {
 test("bullmq events reports QueueEvents errors on its own node status", async () => {
   const statuses = [];
   const errors = [];
+  let configNodeReports = 0;
   const queueEvents = new EventEmitter();
   queueEvents.waitUntilReady = async function waitUntilReady() {};
   queueEvents.close = async function close() {};
   const queueConfig = {
-    config: { queueName: "eventcasts" },
+    config: { queueName: "eventcasts", backend: "postgres" },
     register(node) {
       node.status({ fill: "grey", shape: "ring", text: "configured" });
     },
     createQueueEvents() {
       return queueEvents;
+    },
+    reportBackendFailure() {
+      configNodeReports += 1;
     },
     deregister(node, done) {
       done();
@@ -344,6 +359,11 @@ test("bullmq events reports QueueEvents errors on its own node status", async ()
     text: "disconnected",
   });
   assert.equal(errors.length, 1);
+  assert.equal(
+    configNodeReports,
+    0,
+    "errors after readiness still belong to the visible runtime node",
+  );
 });
 
 // The config node owns live backend status; bullmq cmd only reads it. This
@@ -536,21 +556,25 @@ test("bullmq events shows connecting before the connection is ready", async () =
   });
 });
 
-test("bullmq flow shows disconnected when the initial connection fails", async () => {
+test("postgres flow routes an initial connection failure through the config-node latch", async () => {
   const statuses = [];
   const errors = [];
+  const configErrors = [];
   const flowProducer = new EventEmitter();
   flowProducer.waitUntilReady = async function waitUntilReady() {
     throw new Error("connect ECONNREFUSED");
   };
   flowProducer.close = async function close() {};
   const queueConfig = {
-    config: { queueName: "flowcasts" },
+    config: { queueName: "flowcasts", backend: "postgres" },
     register(node) {
       node.status({ fill: "grey", shape: "ring", text: "configured" });
     },
     createFlowProducer() {
       return flowProducer;
+    },
+    reportBackendFailure(err) {
+      configErrors.push(String(err));
     },
     deregister(node, done) {
       done();
@@ -564,7 +588,7 @@ test("bullmq flow shows disconnected when the initial connection fails", async (
       statuses.push(status);
     },
     error(err) {
-      errors.push(err);
+      errors.push(String(err));
     },
   });
 
@@ -578,7 +602,17 @@ test("bullmq flow shows disconnected when the initial connection fails", async (
     shape: "ring",
     text: "disconnected",
   });
-  assert.equal(errors.length, 1);
+  assert.equal(
+    errors.length,
+    0,
+    "the same startup failure is not reported twice",
+  );
+  assert.equal(
+    configErrors.length,
+    1,
+    "postgres startup failures must use the shared config-node latch",
+  );
+  assert.match(configErrors[0], /ECONNREFUSED/);
 });
 
 test("config node exposes the shared producer connection", async () => {
@@ -647,17 +681,24 @@ test("config node createWorker does not attach its own error listener", async ()
   try {
     assert.equal(worker.listenerCount("error"), 0);
   } finally {
-    await worker.close().catch(() => {});
+    try {
+      await worker.close();
+    } catch {
+      // best effort test cleanup
+    }
   }
 });
 
-function constructRunNode(config) {
+function constructRunNode(config, backend) {
   const createdOptions = [];
   const worker = new EventEmitter();
   worker.close = async function close() {};
+  worker.waitUntilReady = async function waitUntilReady() {};
+  worker.run = async function run() {};
   const queueConfig = {
-    config: { queueName: "runcasts" },
+    config: { queueName: "runcasts", backend },
     register() {},
+    reportBackendFailure() {},
     createWorker(processor, options) {
       createdOptions.push(options);
       return worker;
@@ -680,6 +721,11 @@ function constructRunNode(config) {
   });
   return { createdOptions, node };
 }
+
+test("postgres run waits for readiness before starting the worker", () => {
+  const options = constructRunNode({}, "postgres").createdOptions[0];
+  assert.equal(options.autorun, false);
+});
 
 test("bullmq run applies only a complete positive limiter pair", () => {
   const defaults = constructRunNode({}).createdOptions[0];
@@ -933,4 +979,247 @@ test("config node reports why the backend is unavailable, not just that it is", 
   assert.equal(node.backendStatus, "disconnected");
   assert.equal(errors.length, 1, "exactly one report, not one per retry");
   assert.match(errors[0], /password authentication failed/);
+});
+
+function buildConfigNode(RED, config) {
+  registerBullMQNodes(RED);
+  const Server = RED.registered.get("bullmq-queue-server").constructor;
+  const node = {};
+  Server.call(node, config);
+  return node;
+}
+
+test("each backend failure category gets its own actionable message", () => {
+  const errors = [];
+  const RED = createRED({ error: (err) => errors.push(String(err)) });
+  const node = buildConfigNode(RED, { name: "categorycasts" });
+
+  node.reportBackendFailure(new SchemaMigrationRequiredError("bullmq"));
+  node.reportBackendFailure(new SchemaVersionMismatchError(3, 2));
+  node.reportBackendFailure(
+    new UnsupportedPostgresVersionError("12.3", MINIMUM_POSTGRES_VERSION),
+  );
+  node.reportBackendFailure(
+    new Error(
+      "The PostgreSQL backend could not load the optional 'pg' package. " +
+        "Install it with `npm install pg`.",
+    ),
+  );
+  node.reportBackendFailure(new Error("connect ECONNREFUSED"));
+
+  assert.equal(errors.length, 5, "every category must report");
+  assert.match(
+    errors[0],
+    /not initialized.*"migrate" property/s,
+    "schema-migration-required must say which setting to turn on",
+  );
+  assert.match(
+    errors[1],
+    /Upgrade this Node-RED package.*schema downgrades are not supported/,
+    "schema-version-mismatch must give the supported upgrade path",
+  );
+  assert.match(
+    errors[2],
+    new RegExp(
+      `requires server version ${MINIMUM_POSTGRES_VERSION} or newer.*` +
+        `${RECOMMENDED_POSTGRES_VERSION}\\+ recommended`,
+    ),
+    "unsupported-postgres-version must name the real floor, not a hardcoded one",
+  );
+  assert.match(
+    errors[3],
+    /npm install pg/,
+    "a missing pg module must say how to fix it",
+  );
+  assert.match(
+    errors[4],
+    /^BullMQ backend is unavailable: connect ECONNREFUSED$/,
+    "an unrecognized failure keeps today's generic message",
+  );
+});
+
+test("the same backend failure category reported twice yields one node.error", async () => {
+  const errors = [];
+  const RED = createRED({ error: (err) => errors.push(String(err)) });
+  const node = buildConfigNode(RED, { name: "dedupcasts" });
+
+  // Simulates two different resources (e.g. the shared queue via
+  // watchBackend, and bullmq events'/bullmq flow's own waitUntilReady catch)
+  // independently hitting the identical failure on one deploy.
+  const backend = new EventEmitter();
+  backend.waitUntilReady = () =>
+    Promise.reject(new SchemaMigrationRequiredError("bullmq"));
+  node.watchBackend(backend);
+  await tick();
+  await tick();
+
+  node.reportBackendFailure(new SchemaMigrationRequiredError("bullmq"));
+
+  assert.equal(
+    errors.length,
+    1,
+    "one deploy must produce one report per distinct failure, not one per resource",
+  );
+});
+
+test("two different backend failure categories both report", () => {
+  const errors = [];
+  const RED = createRED({ error: (err) => errors.push(String(err)) });
+  const node = buildConfigNode(RED, { name: "twocategoriescasts" });
+
+  node.reportBackendFailure(new SchemaMigrationRequiredError("bullmq"));
+  node.reportBackendFailure(
+    new UnsupportedPostgresVersionError("12.3", MINIMUM_POSTGRES_VERSION),
+  );
+  // A repeat of the first category must still not add a third report.
+  node.reportBackendFailure(new SchemaMigrationRequiredError("bullmq"));
+
+  assert.equal(errors.length, 2);
+});
+
+test("a config node's backend failure latch clears on close, so a later deploy reports again", async () => {
+  const errors = [];
+  const RED = createRED({ error: (err) => errors.push(String(err)) });
+  const node = buildConfigNode(RED, { name: "redeploycasts" });
+
+  node.reportBackendFailure(new SchemaMigrationRequiredError("bullmq"));
+  assert.equal(errors.length, 1);
+
+  const closeHandler = node.listeners("close")[0];
+  assert.ok(closeHandler, "config node must register a close handler");
+  await new Promise((resolve, reject) => {
+    closeHandler.call(node, false, (err) => (err ? reject(err) : resolve()));
+  });
+
+  node.reportBackendFailure(new SchemaMigrationRequiredError("bullmq"));
+  assert.equal(
+    errors.length,
+    2,
+    "close must clear the latch so a redeployed node reports again",
+  );
+});
+
+// BullMQ's postgres factory validates the schema name and loads the optional
+// `pg` module synchronously (createPostgresBackend -> new PostgresConnection
+// -> quoteSchemaName / loadPgModule), all before any resource exists. An
+// invalid schema name is the one construction failure this suite can force
+// for real, with no live database and no mocking of BullMQ's own module
+// loading, so it stands in for "pg missing" too: both throw out of `new
+// Queue/Worker/QueueEvents/FlowProducer(...)` itself.
+test("getQueue reports once and returns null on a synchronous postgres construction failure", () => {
+  const errors = [];
+  const RED = createRED({ error: (err) => errors.push(String(err)) });
+  const node = buildConfigNode(RED, {
+    name: "badschemacasts",
+    backend: "postgres",
+    address: "127.0.0.1",
+    schema: "bad schema!",
+  });
+
+  assert.equal(
+    node.getQueue(),
+    null,
+    "construction failed, so there is no queue to return",
+  );
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /invalid PostgreSQL schema name/);
+
+  // Retrying (as bullmq cmd's input handler does on every message) must not
+  // pile up a second report for the same category.
+  assert.equal(node.getQueue(), null);
+  assert.equal(errors.length, 1);
+});
+
+test("bullmq run does not crash and shows disconnected on a synchronous postgres construction failure", () => {
+  const statuses = [];
+  const errors = [];
+  const RED = createRED({
+    error: (err) => errors.push(String(err)),
+    status: (status) => statuses.push(status),
+  });
+  const node = buildConfigNode(RED, {
+    name: "badschemarun",
+    backend: "postgres",
+    address: "127.0.0.1",
+    schema: "bad schema!",
+  });
+  RED.nodes.getNode = () => node;
+
+  const RunNode = RED.registered.get("bullmq run").constructor;
+  assert.doesNotThrow(() => {
+    RunNode.call({}, { queue: "server", completionMode: "immediate" });
+  });
+
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /invalid PostgreSQL schema name/);
+  assert.deepEqual(statuses.at(-1), {
+    fill: "red",
+    shape: "ring",
+    text: "disconnected",
+  });
+});
+
+test("a runtime node whose backend fails to construct is never registered", async () => {
+  // The config node builds the resource; on a synchronous failure (postgres
+  // selected with pg missing, or a bad schema name) it reports and returns
+  // undefined. Registering before that check would leave the config node
+  // holding a node that never gets a close handler to deregister it.
+  for (const [type, factory] of [
+    ["bullmq events", "createQueueEvents"],
+    ["bullmq flow", "createFlowProducer"],
+  ]) {
+    const registered = [];
+    const queueConfig = {
+      config: { queueName: "failcasts" },
+      register(node) {
+        registered.push(node);
+      },
+      [factory]() {
+        return undefined;
+      },
+      deregister(node, done) {
+        done();
+      },
+    };
+    const statuses = [];
+    const RED = createRED({
+      getNode: () => queueConfig,
+      status: (status) => statuses.push(status),
+    });
+    registerBullMQNodes(RED);
+    RED.registered.get(type).constructor.call({}, { queue: "queue" });
+
+    assert.equal(registered.length, 0, `${type} must not register on failure`);
+    assert.deepEqual(statuses.at(-1), {
+      fill: "red",
+      shape: "ring",
+      text: "disconnected",
+    });
+  }
+});
+
+test("bullmq cmd reports a usable error when the queue could not be built", async () => {
+  const queueConfig = {
+    config: { queueName: "failcasts" },
+    register() {},
+    // What getQueue() returns after a synchronous construction failure.
+    getQueue: () => null,
+    readBackendStatus() {
+      return () => {};
+    },
+    deregister(node, done) {
+      done();
+    },
+  };
+  const RED = createRED({ getNode: () => queueConfig });
+  registerBullMQNodes(RED);
+
+  const node = {};
+  RED.registered.get("bullmq cmd").constructor.call(node, { queue: "queue" });
+
+  const err = await new Promise((resolve) => {
+    node.emit("input", { cmd: "add", payload: "x" }, () => {}, resolve);
+  });
+  // Not a bare "Cannot read properties of null (reading 'add')".
+  assert.match(String(err), /queue is unavailable/i);
 });
