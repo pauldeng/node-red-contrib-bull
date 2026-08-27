@@ -763,6 +763,144 @@ test(
 );
 
 test(
+  "PostgreSQL backend: close lets a worker mid-job finish against a healthy database",
+  { skip: skipReason },
+  async () => {
+    // The concrete, user-visible proof of the closeBudgetFor fix: a worker
+    // still processing a job when close() is called must be allowed to
+    // drain it, exactly as the Redis path already does for a ready
+    // connection. Before the fix, every postgres resource always took the
+    // fast Redis CLOSE_GRACE_MS (1000ms) budget because it has no companion
+    // ioredis connection. PostgreSQL has no raw force-disconnect handle, so
+    // Node-RED would report close complete while work and sockets remained.
+    //
+    // The bullmq cmd node below is here only to enqueue the job. It is NOT
+    // what makes the budget correct: the budget comes from the worker's own
+    // backend readiness, so a flow with no cmd node at all behaves the same.
+    // That wiring guarantee is pinned deterministically by "config close lets
+    // a connected backend finish a slow graceful close" in
+    // test/shutdown.test.js, which asserts the graceful budget while the
+    // config node has no shared queue; this test owns the end-to-end proof
+    // that a real job on a real database actually drains.
+    const postgres = await startPostgres();
+    let userDir;
+
+    try {
+      userDir = await startHelper();
+      const flow = [
+        { id: "tab", type: "tab", label: "postgres mid-job close" },
+        postgresQueueConfig("queue", "midjobcasts", postgres),
+        {
+          id: "cmd",
+          type: "bullmq cmd",
+          z: "tab",
+          queue: "queue",
+          wires: [[]],
+        },
+        {
+          id: "run",
+          type: "bullmq run",
+          z: "tab",
+          queue: "queue",
+          completionMode: "manual",
+          ackTimeout: 300000,
+          concurrency: 1,
+          x: 160,
+          y: 220,
+          wires: [["run-out"]],
+        },
+        { id: "run-out", type: "helper", z: "tab", x: 360, y: 220, wires: [] },
+        {
+          // Deliberately not wired downstream of "run": the test decides
+          // exactly when the job finishes, by calling receive() on this
+          // node directly once it wants to simulate the processor completing.
+          id: "complete",
+          type: "bullmq job",
+          z: "tab",
+          action: "complete",
+          x: 360,
+          y: 320,
+          wires: [[]],
+        },
+      ];
+
+      await helper.load(bullNodes, flow, {
+        queue: { password: postgres.password },
+      });
+
+      const configNode = helper.getNode("queue");
+      assert.equal(
+        await waitForBackendSettled(configNode),
+        "connected",
+        "the database is healthy and reachable, so the backend must settle connected",
+      );
+
+      const runNode = helper.getNode("run");
+      const complete = helper.getNode("complete");
+      const cmd = helper.getNode("cmd");
+
+      const jobInFlight = waitForInput(helper.getNode("run-out"));
+      cmd.receive({ cmd: "add", payload: "mid-job payload" });
+      const inFlightMsg = await jobInFlight;
+      const jobId = inFlightMsg.bull.jobId;
+      const ackId = inFlightMsg.bull.ackId;
+
+      // The worker's processor is now genuinely blocked awaiting this
+      // acknowledgement -- the same shape as the measured "processor sleeps
+      // ~3s" scenario, comfortably past CLOSE_GRACE_MS (1000ms) and well
+      // inside the PostgreSQL close budget.
+      const PROCESSOR_DELAY_MS = 3000;
+      async function completeAfterDelay() {
+        await sleep(PROCESSOR_DELAY_MS);
+        complete.receive({
+          cmd: "complete",
+          payload: "mid-job payload",
+          bull: { ackId },
+        });
+      }
+      const completion = completeAfterDelay();
+
+      // This is bull-queue.js's own production close path
+      // (releaseResource -> closeResourcePair -> closeResource ->
+      // closeBudgetFor(resource)), invoked directly rather than
+      // through the run node's own "close" handler -- that handler rejects
+      // any pending acknowledgement itself before releasing the resource,
+      // which would fail this job on purpose and defeat the point of the
+      // test.
+      const releaseStarted = Date.now();
+      await runNode.bullQueue.releaseResource(runNode.worker);
+      await completion;
+      const releaseElapsedMs = Date.now() - releaseStarted;
+
+      assert.ok(
+        releaseElapsedMs > 1500,
+        `close must wait past the fast CLOSE_GRACE_MS cap for the in-flight job, not cut it off (took ${releaseElapsedMs}ms)`,
+      );
+      assert.ok(
+        releaseElapsedMs < 9000,
+        `close must settle once the job finishes, not run all the way to the GRACEFUL_CLOSE_MS ceiling (took ${releaseElapsedMs}ms)`,
+      );
+
+      const queue = configNode.getQueue();
+      const job = await queue.getJob(jobId);
+      assert.equal(
+        await job.getState(),
+        "completed",
+        "the job must complete normally, not be abandoned to the stalled checker",
+      );
+    } finally {
+      try {
+        if (userDir) {
+          await stopHelper(userDir);
+        }
+      } finally {
+        await postgres.stop();
+      }
+    }
+  },
+);
+
+test(
   "PostgreSQL backend: four independently created backends migrate a fresh database exactly once",
   { skip: skipReason },
   async () => {

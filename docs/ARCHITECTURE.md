@@ -35,19 +35,25 @@ Queue retention defaults are attached directly to `Queue`. For a single tree, `b
 
 ## Shutdown
 
-Closing an owner/connection pair (`bull-queue.js`) uses one of two budgets, chosen from the tracked connection's state:
+Closing an owner/connection pair (`bull-queue.js`) uses a budget chosen from the resource ownership already recorded in the config node's `resources` map:
 
-- `GRACEFUL_CLOSE_MS` (10 seconds) when the connection is `ready`. `Worker.close()` waits for in-flight jobs, and cutting that off abandons a running job to the stalled checker, which re-runs it and can eventually fail it for exceeding `maxStalledCount`. The ceiling stays under Node-RED's own node close timeout, and pairs close concurrently, so it bounds one resource rather than the sum.
-- `CLOSE_GRACE_MS` (1 second) otherwise, so an unreachable Redis never blocks shutdown or redeploy.
+- A Redis owner with a ready companion ioredis connection gets `GRACEFUL_CLOSE_MS` (10 seconds). `Worker.close()` waits for in-flight jobs, and cutting that off abandons a running job to the stalled checker, which re-runs it and can eventually fail it for exceeding `maxStalledCount`.
+- A Redis owner whose companion connection is not ready gets `CLOSE_GRACE_MS` (1 second), followed by the Redis force-disconnect fallback.
+- A PostgreSQL owner has no companion connection because BullMQ owns its pool. It gets `POSTGRES_CLOSE_MS` (11 seconds), derived as `POSTGRES_CONNECTION_TIMEOUT_MS` (the 10-second `connectionTimeoutMillis` this package fixes in `lib/connections.js`) plus one second of scheduling margin, so raising that timeout cannot leave the budget short. PostgreSQL exposes no raw client that this package can safely force closed, so Node-RED must await pg's own timeout before reporting close complete.
+
+Pairs close concurrently, so these budgets bound one resource rather than adding across all resources. They also avoid using the config node's shared `backendStatus`: that status belongs to the shared `Queue`, so a config node backing only a `bullmq run` node may never advance it.
 
 Within that budget:
 
-1. The BullMQ owner's own graceful close (`Queue.close()` / `Worker.close()` / `QueueEvents.close()` / `FlowProducer.close()`). This alone succeeds whenever Redis is reachable.
-2. If graceful close times out, force-disconnect the backend's raw ioredis clients and stop Worker lock-renewal/stalled-check timers.
+1. The BullMQ owner's own graceful close (`Queue.close()` / `Worker.close()` / `QueueEvents.close()` / `FlowProducer.close()`). This alone succeeds whenever the datastore is reachable.
+2. If graceful close times out, force-disconnect and stop Worker lock-renewal/stalled-check timers (`forceDisconnect`).
 
-The fallback is deliberately tied to the exact BullMQ 6.2.1 pin. Its public `disconnect()` awaits the same never-ready connection promise as `close()`, so calling it would spend a second grace period without improving shutdown. Re-evaluate the fallback whenever the BullMQ pin changes.
+Step 2 differs by backend:
 
-A raw ioredis connection (not a BullMQ owner) skips straight to a force-disconnect after its own bounded `quit()`/close attempt. Every step is best-effort — one step's error does not stop the ones after it — which is what keeps Node-RED shutdown and redeploy from hanging when Redis is unreachable.
+- **Redis**: force-disconnect the backend's raw ioredis clients (`connection._client` / `blockingConnection._client`), behind an `IQueueBackend` capability check (`typeof resource.getBackend === "function"`). This escalation is deliberately tied to the exact BullMQ 6.2.1 pin: its public `disconnect()` awaits the same never-ready connection promise as `close()`, so calling it would spend a second grace period without improving shutdown. Re-evaluate the fallback whenever the BullMQ pin changes.
+- **PostgreSQL**: no raw-force branch. Against a blackholed host, `PostgresConnection.close()` settles when its configured 10-second connection timeout expires; the 11-second PostgreSQL budget awaits that promise instead of returning while its socket is still active. Worker's lock-renewal and stalled-check timers remain Worker-owned and use the same cleanup path on both backends.
+
+A raw ioredis connection (not a BullMQ owner) skips straight to a force-disconnect after its own bounded `quit()`/close attempt. Every step is best-effort — one step's error does not stop the ones after it — which is what keeps Node-RED shutdown and redeploy from hanging when the datastore is unreachable.
 
 ## Commands
 

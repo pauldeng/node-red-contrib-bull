@@ -24,6 +24,7 @@ const {
 } = require("./lib/acknowledgements");
 const { dispatchCommand } = require("./lib/commands");
 const {
+  POSTGRES_CONNECTION_TIMEOUT_MS,
   buildBullMQOptions,
   buildRedisDescriptor,
   createRedisConnection,
@@ -65,17 +66,21 @@ const CLOSE_GRACE_MS = 1000;
 // the sum.
 const GRACEFUL_CLOSE_MS = 10000;
 
-// KNOWN GAP, owned by the PostgreSQL plan's Phase 5: this reads an ioredis
-// connection's live status, and the postgres path tracks no connection at all
-// (BullMQ owns its pool), so every postgres resource takes the fast 1s budget
-// even when the database is perfectly reachable -- a worker mid-job would be
-// cut off rather than allowed to drain. The backend-neutral signal the fix
-// needs already exists as the config node's backendStatus; Phase 5 wires it in
-// after measuring what an unreachable PostgreSQL actually does.
+// PostgreSQL's connection timeout is its only way to stop an outstanding
+// connect. Unlike Redis, it has no raw client that we can force closed, so its
+// close budget needs scheduling margin beyond that timeout. Derived from the
+// timeout it has to outlast rather than written as a literal, so raising
+// POSTGRES_CONNECTION_TIMEOUT_MS cannot silently leave the budget short.
+const POSTGRES_CLOSE_MS = POSTGRES_CONNECTION_TIMEOUT_MS + CLOSE_GRACE_MS;
+
 function closeBudgetFor(connection) {
-  return connection && connection.status === "ready"
-    ? GRACEFUL_CLOSE_MS
-    : CLOSE_GRACE_MS;
+  // PostgreSQL owners have no companion connection in node.resources because
+  // BullMQ owns their pool. Redis owners retain the live ioredis status that
+  // distinguishes a healthy worker drain from an unreachable fast close.
+  if (!connection) {
+    return POSTGRES_CLOSE_MS;
+  }
+  return connection.status === "ready" ? GRACEFUL_CLOSE_MS : CLOSE_GRACE_MS;
 }
 
 async function settled(promise) {
@@ -126,10 +131,14 @@ async function forceDisconnect(resource) {
     return;
   }
   const backend = resource.getBackend();
-  disconnectClient(backend && backend.connection && backend.connection._client);
-  disconnectClient(
-    backend && backend.blockingConnection && backend.blockingConnection._client,
-  );
+  // RedisQueueBackend is the only installed backend exposing raw `_client`
+  // handles. PostgreSQL deliberately skips this branch.
+  if (backend && backend.connection && backend.connection._client) {
+    disconnectClient(backend.connection._client);
+    disconnectClient(
+      backend.blockingConnection && backend.blockingConnection._client,
+    );
+  }
   // Measured on installed BullMQ 6.2.1: a Worker's close() never reaches this
   // point on its own here, because its very first cleanup step awaits the
   // same stuck connection above. That means the lock-renewal timer it starts
@@ -147,6 +156,8 @@ async function forceDisconnect(resource) {
   if (typeof resource.stalledCheckStopper === "function") {
     resource.stalledCheckStopper();
   }
+  // PostgreSQL has no raw force-disconnect branch. closeBudgetFor therefore
+  // lets its own connection timeout settle close() before Node-RED calls done.
 }
 
 async function closeResource(resource, connection) {
