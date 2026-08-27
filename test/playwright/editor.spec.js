@@ -255,3 +255,211 @@ test("auto-removal fields are prefilled with bounded defaults and persist", asyn
   });
   expect(stored).toEqual({ complete: "25", fail: "" });
 });
+
+async function openEditor(page) {
+  await page.goto("/");
+  await page.waitForFunction(() => {
+    const loader = document.querySelector("#red-ui-loading-progress");
+    return (
+      window.RED &&
+      RED.nodes.getType("bullmq-queue-server") &&
+      RED.workspaces.active() &&
+      loader &&
+      getComputedStyle(loader).display === "none"
+    );
+  });
+}
+
+test("PostgreSQL backend toggles its rows, keeps per-backend ports, and persists", async ({
+  page,
+}) => {
+  await openEditor(page);
+  await page.evaluate(() => {
+    RED.editor.editConfig("", "bullmq-queue-server", "_ADD_");
+  });
+
+  // Redis is the default backend, so its topology rows own the dialog.
+  await expect(page.locator("#node-config-input-backend")).toHaveValue("redis");
+  await expect(page.locator("#node-config-input-deployment")).toBeVisible();
+  await expect(page.locator("#node-config-input-prefix")).toBeVisible();
+  await expect(page.locator("#node-config-input-database")).toBeHidden();
+  await expect(page.locator("#node-config-input-port")).toHaveValue("6379");
+
+  await page.locator("#node-config-input-backend").selectOption("postgres");
+
+  // Redis-shaped rows give way to the database rows; host and port are shared
+  // and must stay, since PostgreSQL needs them too.
+  await expect(page.locator("#node-config-input-deployment")).toBeHidden();
+  await expect(page.locator("#node-config-input-prefix")).toBeHidden();
+  await expect(page.locator("#node-config-input-db")).toBeHidden();
+  await expect(page.locator("#node-config-input-address")).toBeVisible();
+  await expect(page.locator("#node-config-input-port")).toBeVisible();
+  await expect(page.locator("#node-config-input-database")).toBeVisible();
+  await expect(page.locator("#node-config-input-schema")).toBeVisible();
+  await expect(page.locator("#node-config-input-max")).toBeVisible();
+  await expect(page.locator("#node-config-input-migrate")).toBeVisible();
+
+  // The shared port field follows the backend, and migrations match the
+  // runtime default rather than an unchecked box.
+  await expect(page.locator("#node-config-input-port")).toHaveValue("5432");
+  await expect(page.locator("#node-config-input-migrate")).toBeChecked();
+
+  // Each backend keeps its own value while the dialog is open. Using 5432 as
+  // a deliberate Redis port pins the collision with PostgreSQL's default.
+  await page.locator("#node-config-input-backend").selectOption("redis");
+  await page.locator("#node-config-input-port").fill("5432");
+  await page.locator("#node-config-input-backend").selectOption("postgres");
+  await page.locator("#node-config-input-port").fill("15432");
+  await page.locator("#node-config-input-backend").selectOption("redis");
+  await expect(page.locator("#node-config-input-port")).toHaveValue("5432");
+  await page.locator("#node-config-input-backend").selectOption("postgres");
+  await expect(page.locator("#node-config-input-port")).toHaveValue("15432");
+
+  await page.locator("#node-config-input-name").fill("postgres-queue");
+  await page.locator("#node-config-input-port").fill("5432");
+  await page.locator("#node-config-input-database").fill("bullmq");
+  await page.locator("#node-config-input-schema").fill("jobs");
+  await page.locator("#node-config-input-max").fill("4");
+  await page.locator("#node-config-input-migrate").uncheck();
+  await page.locator("#node-config-input-password").fill("pg-password-secret");
+  await page.locator("#node-config-input-tls").check();
+  await page
+    .locator("#node-config-input-tlsCert")
+    .fill("pg-client-cert-secret");
+
+  await page.locator("#node-config-dialog-ok").click();
+  await expect(page.locator("#node-config-dialog-ok")).toHaveCount(0);
+
+  const configId = await page.evaluate(() => {
+    let id;
+    RED.nodes.eachConfig((node) => {
+      if (
+        node.type === "bullmq-queue-server" &&
+        node.name === "postgres-queue"
+      ) {
+        id = node.id;
+      }
+    });
+    return id;
+  });
+  expect(configId).toBeTruthy();
+
+  const exportedFlows = JSON.stringify(
+    await (await page.request.get("/flows")).json(),
+  );
+  expect(exportedFlows).not.toContain("pg-password-secret");
+  expect(exportedFlows).not.toContain("pg-client-cert-secret");
+
+  await page.evaluate((id) => {
+    RED.editor.editConfig("", "bullmq-queue-server", id);
+  }, configId);
+
+  await expect(page.locator("#node-config-input-backend")).toHaveValue(
+    "postgres",
+  );
+  await expect(page.locator("#node-config-input-database")).toHaveValue(
+    "bullmq",
+  );
+  await expect(page.locator("#node-config-input-schema")).toHaveValue("jobs");
+  await expect(page.locator("#node-config-input-max")).toHaveValue("4");
+  await expect(page.locator("#node-config-input-migrate")).not.toBeChecked();
+  await expect(page.locator("#node-config-input-deployment")).toBeHidden();
+
+  await page.locator("#node-config-dialog-cancel").click();
+});
+
+test("Redis ignores an invalid hidden PostgreSQL pool size", async ({
+  page,
+}) => {
+  await openEditor(page);
+  await page.evaluate(() => {
+    RED.editor.editConfig("", "bullmq-queue-server", "_ADD_");
+  });
+
+  await page.locator("#node-config-input-name").fill("redis-hidden-pg");
+  await page.locator("#node-config-input-backend").selectOption("postgres");
+  await page.locator("#node-config-input-max").fill("0");
+  await page.locator("#node-config-input-backend").selectOption("redis");
+  await page.locator("#node-config-dialog-ok").click();
+  await expect(page.locator("#node-config-dialog-ok")).toHaveCount(0);
+
+  // The dialog closing proves nothing on its own: Node-RED marks a node
+  // invalid rather than blocking OK. Read the node's own validity, which is
+  // what paints the error triangle on every node using this config -- and the
+  // Pool Max row is hidden on Redis, so there would be no field to correct.
+  const state = await page.evaluate(() => {
+    let found;
+    RED.nodes.eachConfig((node) => {
+      if (
+        node.type === "bullmq-queue-server" &&
+        node.name === "redis-hidden-pg"
+      ) {
+        found = node;
+      }
+    });
+    return { backend: found.backend, max: found.max, valid: found.valid };
+  });
+  expect(state.backend).toBe("redis");
+  expect(state.max).toBe("0");
+  expect(state.valid).not.toBe(false);
+});
+
+test("a config saved without a backend property reopens as Redis with migrations on", async ({
+  page,
+}) => {
+  await openEditor(page);
+
+  // Build the node through Node-RED's own dialog, then strip the two
+  // properties the backend selector introduced. That is exactly what a flow
+  // saved before it existed looks like on disk, and editor defaults never
+  // migrate saved JSON.
+  await page.evaluate(() => {
+    RED.editor.editConfig("", "bullmq-queue-server", "_ADD_");
+  });
+  await expect(page.locator("#node-config-input-name")).toBeVisible();
+  await page.locator("#node-config-input-name").fill("legacy-queue");
+  await page.locator("#node-config-dialog-ok").click();
+  await expect(page.locator("#node-config-dialog-ok")).toHaveCount(0);
+
+  const configId = await page.evaluate(() => {
+    let id;
+    RED.nodes.eachConfig((node) => {
+      if (node.type === "bullmq-queue-server" && node.name === "legacy-queue") {
+        id = node.id;
+      }
+    });
+    const node = RED.nodes.node(id);
+    delete node.backend;
+    delete node.migrate;
+    return id;
+  });
+  expect(configId).toBeTruthy();
+
+  // Opening a legacy node must present the runtime's own defaults, not blanks.
+  await page.evaluate((id) => {
+    RED.editor.editConfig("", "bullmq-queue-server", id);
+  }, configId);
+  await expect(page.locator("#node-config-input-name")).toBeVisible();
+
+  await expect(
+    page.locator("#node-config-input-backend"),
+    "a flow with no backend property must read as Redis",
+  ).toHaveValue("redis");
+  await expect(page.locator("#node-config-input-deployment")).toBeVisible();
+  await expect(page.locator("#node-config-input-database")).toBeHidden();
+  // The runtime treats a missing migrate as enabled; the box must agree, or
+  // simply reopening and saving a legacy flow would silently turn it off.
+  await expect(page.locator("#node-config-input-migrate")).toBeChecked();
+
+  // Saving is where a wrong default would become permanent, so persist it and
+  // read the node back.
+  await page.locator("#node-config-dialog-ok").click();
+  await expect(page.locator("#node-config-dialog-ok")).toHaveCount(0);
+
+  const saved = await page.evaluate((id) => {
+    const node = RED.nodes.node(id);
+    return { backend: node.backend, migrate: node.migrate };
+  }, configId);
+  expect(saved.backend).toBe("redis");
+  expect(saved.migrate).toBe(true);
+});
