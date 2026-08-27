@@ -33,7 +33,12 @@ test("editor defines templates and registrations for all node types", () => {
 
 test("config editor exposes deployment, cluster, sentinel, auth, and TLS fields", () => {
   for (const field of [
+    "backend",
     "deployment",
+    "database",
+    "schema",
+    "max",
+    "migrate",
     "clusterNodes",
     "sentinels",
     "sentinelMasterName",
@@ -69,6 +74,59 @@ test("auto-removal fields accept only blank or non-negative whole numbers", () =
   }
 });
 
+test("the PostgreSQL pool max accepts blank but not zero", () => {
+  assert.match(
+    html,
+    /<input[^>]+type="number"[^>]+id="node-config-input-max"[^>]+min="1"[^>]+step="1"/,
+  );
+  // Blank, undefined and null all mean "use the default"; anything else has
+  // to be a whole number of at least one.
+  assert.match(
+    html,
+    /if \(value === "" \|\| value === undefined \|\| value === null\)/,
+  );
+  assert.match(html, /Number\(value\) >= 1/);
+  // Only PostgreSQL is held to it. Node-RED validates hidden fields too, and a
+  // Redis config flagged invalid by the hidden pool row cannot be corrected.
+  assert.match(
+    html,
+    /return this\.backend !== "postgres" \|\| validatePoolMax\(value\);/,
+  );
+});
+
+test("backend selection drives row visibility and preserves per-backend ports", () => {
+  // Redis-only rows hide on PostgreSQL and vice versa, and host/port stay
+  // visible for PostgreSQL even though they carry the Redis standalone class.
+  assert.match(html, /\$\("\.bull-redis-row"\)\.toggle\(!postgres\)/);
+  assert.match(html, /\$\("\.bull-postgres-row"\)\.toggle\(postgres\)/);
+  assert.match(
+    html,
+    /\$\("\.bull-single-row"\)\.toggle\(postgres \|\| deployment === "single"\)/,
+  );
+  // One saved field, with one in-dialog value per backend so switching modes
+  // never destroys a deliberate custom value.
+  assert.match(html, /portValues/);
+  assert.match(
+    html,
+    /portValues\[activeBackend\] = String\(portField\.val\(\)\)/,
+  );
+});
+
+test("config editor seeds backend and migrate for flows saved without them", () => {
+  // Editor defaults never migrate saved JSON, so a flow saved before the
+  // backend selector existed must still open as Redis with migrations on.
+  assert.match(html, /backend: \{ value: "redis"/);
+  assert.match(html, /migrate: \{ value: true \}/);
+  assert.match(
+    html,
+    /if \(!this\.backend\) \{\s*\$\("#node-config-input-backend"\)\.val\("redis"\);/,
+  );
+  assert.match(
+    html,
+    /if \(this\.migrate === undefined\) \{\s*\$\("#node-config-input-migrate"\)\.prop\("checked", true\);/,
+  );
+});
+
 test("worker, job, events, and flow editors expose their stable config fields", () => {
   for (const field of [
     "completionMode",
@@ -88,9 +146,15 @@ test("help documents every config node field", () => {
   const help = helpBlock("bullmq-queue-server");
   for (const text of [
     "Queue",
+    "Backend",
     "Deployment",
     "Host",
     "Port",
+    "Database Name",
+    "Schema",
+    "Pool Max",
+    "Migrations",
+    "npm install pg",
     "Cluster Nodes",
     "Sentinels",
     "Master",
@@ -120,6 +184,14 @@ test("help documents every config node field", () => {
   ]) {
     assert.match(help, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
+});
+
+test("shared connection help is backend-neutral and documents PostgreSQL SNI", () => {
+  const help = helpBlock("bullmq-queue-server");
+  assert.match(help, /validating private backend certificates/);
+  assert.match(help, /node-postgres[\s\S]*literal IP address/);
+  assert.match(help, /grows backend storage without bound/);
+  assert.doesNotMatch(help, /validating private Redis certificates/);
 });
 
 test("help documents runtime node fields and message examples", () => {
