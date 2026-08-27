@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const { EventEmitter, once } = require("node:events");
+const net = require("node:net");
 const { setTimeout: delay } = require("node:timers/promises");
 const test = require("node:test");
 
@@ -41,10 +42,10 @@ function createRED(options = {}) {
   };
 }
 
-function buildServerNode(RED) {
+function buildServerNode(RED, config = DEAD_REDIS) {
   const Server = RED.registered.get("bullmq-queue-server").constructor;
   const server = {};
-  Server.call(server, DEAD_REDIS);
+  Server.call(server, config);
   return server;
 }
 
@@ -60,21 +61,24 @@ async function invokeClose(node) {
 }
 
 async function settleWithin(promise, ms) {
-  let outcome = "pending";
-  (async () => {
+  async function outcome() {
     try {
       await promise;
-      outcome = "closed";
+      return "closed";
     } catch (err) {
-      outcome = "rejected";
+      return "rejected";
     }
-  })();
-
-  const deadline = Date.now() + ms;
-  while (outcome === "pending" && Date.now() < deadline) {
-    await delay(25);
   }
-  return outcome === "pending" ? "timed out" : outcome;
+
+  const controller = new AbortController();
+  try {
+    return await Promise.race([
+      outcome(),
+      delay(ms, "timed out", { signal: controller.signal }),
+    ]);
+  } finally {
+    controller.abort();
+  }
 }
 
 function forceCleanup(server) {
@@ -350,24 +354,24 @@ test("config close force-disconnects within one shutdown budget", async () => {
   const RED = createRED();
   registerBullMQNodes(RED);
   const server = buildServerNode(RED);
-
   const neverGate = new EventEmitter();
   const rawDisconnectCalls = [];
+  const backend = Object.assign(new EventEmitter(), {
+    connection: {
+      _client: {
+        disconnect(wait) {
+          rawDisconnectCalls.push(wait);
+        },
+      },
+    },
+  });
   const owner = {
     async close() {
       // Never settles, forcing the CLOSE_GRACE_MS fallback to fire.
       await once(neverGate, "release");
     },
     getBackend() {
-      return {
-        connection: {
-          _client: {
-            disconnect(wait) {
-              rawDisconnectCalls.push(wait);
-            },
-          },
-        },
-      };
+      return backend;
     },
   };
   const connection = { async close() {} };
@@ -535,4 +539,133 @@ test("config close lets a healthy connection finish a slow graceful close", asyn
   } finally {
     forceCleanup(server);
   }
+});
+
+test("config close awaits a PostgreSQL owner with no raw force-disconnect handle", async () => {
+  const RED = createRED();
+  registerBullMQNodes(RED);
+  const server = buildServerNode(RED);
+
+  // PostgreSQL has no companion connection and no raw force-disconnect
+  // handle, so its owner must get enough time for pg's own connection timeout
+  // even when it never became ready; returning after the Redis-only fast
+  // budget would leave the pool's pending socket alive after Node-RED called
+  // close done.
+  const events = [];
+  const owner = {
+    async close() {
+      // Comfortably past CLOSE_GRACE_MS, so the fast cap would cut it off.
+      await delay(1400);
+      events.push("closed");
+    },
+    getBackend() {
+      return new EventEmitter();
+    },
+  };
+  server.resources = new Map([[owner, undefined]]);
+
+  try {
+    // Deliberately not CLOSE_DEADLINE_MS: the whole point is that a graceful
+    // close is allowed to run past the unreachable-datastore cap.
+    const result = await settleWithin(invokeClose(server), 4000);
+    assert.equal(result, "closed", "close must still settle");
+    assert.deepEqual(
+      events,
+      ["closed"],
+      "PostgreSQL close must await its owner instead of returning with live work",
+    );
+  } finally {
+    forceCleanup(server);
+  }
+});
+
+test("ten PostgreSQL redeploys leave no pending blackhole connections", async () => {
+  const sockets = new Set();
+  const blackhole = net.createServer((socket) => {
+    sockets.add(socket);
+    socket.on("close", () => sockets.delete(socket));
+    socket.on("error", () => {});
+    // Consume the startup packet but never answer it. A paused server socket
+    // would also postpone observing the client's FIN and make the fixture,
+    // rather than pg, look leaked.
+    socket.resume();
+  });
+
+  blackhole.listen(0, "127.0.0.1");
+  await once(blackhole, "listening", {
+    signal: AbortSignal.timeout(3000),
+  });
+  const port = blackhole.address().port;
+
+  async function add(queue) {
+    try {
+      await queue.add("probe", {});
+      return undefined;
+    } catch (err) {
+      return err;
+    }
+  }
+
+  try {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const RED = createRED({ id: `postgres-redeploy-${attempt}` });
+      registerBullMQNodes(RED);
+      const server = buildServerNode(RED, {
+        name: `postgres-redeploy-${attempt}`,
+        backend: "postgres",
+        address: "127.0.0.1",
+        port: String(port),
+        database: "bullmq",
+        username: "bullmq",
+        migrate: false,
+      });
+      // The first attempt outlives Redis's one-second fast budget and pins the
+      // regression. The rest stay short so the ten-redeploy leak check is not
+      // a ten-second test.
+      server.config.postgres.connectionTimeoutMillis =
+        attempt === 0 ? 1500 : 100;
+
+      const connected = once(blackhole, "connection", {
+        signal: AbortSignal.timeout(3000),
+      });
+      const command = add(server.getQueue());
+      const [socket] = await connected;
+      const socketClosed = once(socket, "close", {
+        signal: AbortSignal.timeout(3000),
+      });
+
+      const closeStarted = Date.now();
+      await invokeClose(server);
+      const closeElapsed = Date.now() - closeStarted;
+      if (attempt === 0) {
+        assert.ok(
+          closeElapsed >= 1250,
+          `PostgreSQL close must outlive the Redis-only fast budget (took ${closeElapsed}ms)`,
+        );
+      }
+      // pg has released its client by this point; await delivery of the remote
+      // socket event as fixture cleanup before starting the next redeploy.
+      await socketClosed;
+      assert.ok(await command, "the producer command must reject, not hang");
+      assert.equal(server.resources.size, 0);
+    }
+  } finally {
+    for (const socket of sockets) {
+      socket.destroy();
+    }
+    const closed = once(blackhole, "close", {
+      signal: AbortSignal.timeout(3000),
+    });
+    blackhole.close();
+    await closed;
+  }
+
+  assert.equal(sockets.size, 0);
+  assert.equal(
+    process
+      .getActiveResourcesInfo()
+      .some((type) => type === "TCPSocketWrap" || type === "TCPConnectWrap"),
+    false,
+    "PostgreSQL redeploys must not leave active client sockets",
+  );
 });
