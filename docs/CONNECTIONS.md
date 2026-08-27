@@ -16,6 +16,8 @@ Every data connection reconnects with exponential backoff floored at 1s and capp
 
 Select backend `postgres`. The connection uses **Host**, **Port** (5432), **Database Name**, **Username**, the password credential, and three PostgreSQL-only fields: **Schema**, **Pool Max**, and **Migrations**. BullMQ owns every PostgreSQL connection — a pool plus one dedicated `LISTEN` client per backend — so this package creates none of its own on that path, and there is no raw client to reach for.
 
+A blank **Username** or **Database Name** is not "no value": node-postgres falls back to the `PGUSER`/`PGDATABASE` environment variables and then to the operating-system user name, so a blank field takes its value from the Node-RED process's environment. Set both explicitly unless that fallback is deliberate.
+
 `pg` is an optional peer dependency and is not installed with this package. Install it separately (`npm install pg`) before selecting the backend. BullMQ lazily requires it while constructing a queue, so a missing install is reported once per config node on first use, naming the command to run, rather than at load.
 
 PostgreSQL 13 is the floor BullMQ enforces and 14 is what it recommends; an older server is rejected with its version named. The server version is checked on connect, so a downgrade is reported rather than discovered mid-job.
@@ -32,9 +34,13 @@ Turn it off where the database user is not permitted to change the schema, and a
 
 ### Pool sizing
 
-**Pool Max** is the maximum PostgreSQL connections in one config node's pool, defaulting to 2. Blank means the default; `0` is rejected, because a pool that can never hand out a connection cannot run a queue.
+**Pool Max** is the maximum connections in _each_ pool, defaulting to 2. Blank means the default; `0` is rejected, because a pool that can never hand out a connection cannot run a queue.
 
-Unlike Redis, PostgreSQL has a hard server-wide ceiling — `max_connections`, commonly 100, shared with every other client. Budget it: each config node's pool contributes up to its **Pool Max**, and each backend also holds one dedicated `LISTEN` connection outside the pool. A flow with many queues, or many Node-RED instances against one database, can exhaust the server long before it exhausts the pool. Raise `max_connections`, or put a pooler in front, rather than assuming headroom.
+There is one pool per BullMQ resource, not one per config node. BullMQ builds a fresh connection for every `Queue`, `Worker`, `QueueEvents`, and `FlowProducer`, and each of those also holds one dedicated `LISTEN` connection outside its pool. A config node feeding one `bullmq cmd`, one `bullmq run`, one `bullmq events`, and one `bullmq flow` therefore costs up to 4 × (**Pool Max** + 1) server connections — 12 at the default.
+
+Unlike Redis, PostgreSQL has a hard server-wide ceiling — `max_connections`, commonly 100, shared with every other client. Multiply the figure above by every config node and every Node-RED instance pointed at the database before assuming headroom. Raise `max_connections`, or put a pooler in front, rather than guessing.
+
+Raising **Pool Max** is the answer to a busy worker, not lowering it. node-postgres applies the same 10-second connection timeout to waiting for a free pooled connection as it does to opening a new one, so a `bullmq run` node whose **Concurrency** is well above **Pool Max** can fail an operation with `timeout exceeded when trying to connect` under load rather than merely running slower. Size the pool against the worker concurrency it has to serve, then check the total against `max_connections`.
 
 ### TLS
 

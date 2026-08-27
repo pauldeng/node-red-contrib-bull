@@ -3,7 +3,7 @@
 ## Runtime
 
 - `bull-queue.js`: Node-RED registration and runtime glue.
-- `lib/connections.js`: Redis deployment normalization and ioredis descriptors.
+- `lib/connections.js`: backend selection, Redis deployment normalization and ioredis descriptors, and PostgreSQL pool configuration.
 - `lib/scheduler.js`: BullMQ v6 Job Scheduler id handling and serialization.
 - `lib/commands.js`: `bullmq cmd` dispatch.
 - `lib/serialization.js`: message-safe BullMQ serialization.
@@ -17,7 +17,7 @@
 ## Tests
 
 - `test/package-contract.test.js`: dependency and runtime import contract.
-- `test/connections.test.js`: Redis topology option normalization.
+- `test/connections.test.js`: backend selection and Redis/PostgreSQL config normalization.
 - `test/scheduler.test.js`: native Job Scheduler id and serialization contracts.
 - `test/commands.test.js`: command dispatch behavior.
 - `test/acknowledgements.test.js`: manual-acknowledgement registry lifecycle and leak prevention.
@@ -29,9 +29,14 @@
 - `test/serialization.test.js`: message-safe job serialization, including that no lock token escapes.
 - `test/telemetry.test.js`: opt-in telemetry wiring, including the QueueEvents exclusion.
 - `test/docker-matrix-contract.test.js`: Docker deployment fixture and runner contract.
+- `test/redis-characterization.test.js`: pins the Redis descriptors and BullMQ options against backend-seam drift.
+- `test/postgres-wiring.test.js`: PostgreSQL pool config, backend factory positions, and error categories.
+- `test/integration-postgres.test.js`: opt-in PostgreSQL migrations, custom schema, and close behavior against a container.
+- `test/integration-postgres-tls.test.js`: opt-in PostgreSQL TLS connection and `ssl` object shape.
 - `test/integration-standalone.test.js`: opt-in local Redis/PostgreSQL Node-RED runtime flows, standing command/action coverage, schedulers, delayed jobs, events, and flow producer jobs.
 - `test/integration-deployment.test.js`: opt-in external Redis/PostgreSQL deployment flow test used by Docker and MemoryDB.
 - `test/helpers/stores.js`: local Redis/PostgreSQL integration fixtures and backend adapters.
+- `test/playwright/editor.spec.js`: editor dialog behavior in a real Node-RED browser session.
 
 ## Deployment Test Fixtures
 
@@ -58,7 +63,7 @@
 - `README.md`: overview and installation.
 - `docs/NODE_GUIDE.md`: node behavior.
 - `docs/COMMANDS.md`: command reference.
-- `docs/CONNECTIONS.md`: Redis deployments.
+- `docs/CONNECTIONS.md`: Redis and PostgreSQL backends.
 - `docs/TELEMETRY.md`: opt-in OpenTelemetry tracing and metrics.
 - `docs/MIGRATION.md`: breaking upgrade from older package versions.
 - `docs/TESTING.md`: verification plan.
