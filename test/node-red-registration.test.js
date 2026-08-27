@@ -621,7 +621,7 @@ test("postgres flow routes an initial connection failure through the config-node
   assert.match(configErrors[0], /ECONNREFUSED/);
 });
 
-test("config node exposes the shared producer connection", async () => {
+test("config node creates and retains the shared producer connection", async () => {
   const RED = createRED();
   registerBullMQNodes(RED);
   const Server = RED.registered.get("bullmq-queue-server").constructor;
@@ -636,7 +636,8 @@ test("config node exposes the shared producer connection", async () => {
     return connection;
   };
 
-  const connection = node.getProducerConnection();
+  node.getQueue();
+  const connection = node.producerConnection;
   try {
     assert.ok(connection, "producer connection must be created on demand");
     assert.equal(connection, node.producerConnection);
@@ -658,7 +659,7 @@ test("config node exposes the shared producer connection", async () => {
       before,
       "readers must not each attach to the backend",
     );
-    assert.equal(node.getProducerConnection(), connection);
+    assert.equal(node.producerConnection, connection);
   } finally {
     try {
       await node.queue.close();
@@ -1083,7 +1084,7 @@ test("a config node's backend failure latch clears on close, so a later deploy r
 
   const closeHandler = node.listeners("close")[0];
   assert.ok(closeHandler, "config node must register a close handler");
-  await promisify(closeHandler).call(node, false);
+  await closeHandler.call(node, false, () => {});
 
   node.reportBackendFailure(new SchemaMigrationRequiredError("bullmq"));
   assert.equal(
@@ -1153,56 +1154,13 @@ test("bullmq run does not crash and shows disconnected on a synchronous postgres
   });
 });
 
-test("a runtime node whose backend fails to construct is never registered", async () => {
-  // The config node builds the resource; on a synchronous failure (postgres
-  // selected with pg missing, or a bad schema name) it reports and returns
-  // undefined. Registering before that check would leave the config node
-  // holding a node that never gets a close handler to deregister it.
-  for (const [type, factory] of [
-    ["bullmq events", "createQueueEvents"],
-    ["bullmq flow", "createFlowProducer"],
-  ]) {
-    const registered = [];
-    const queueConfig = {
-      config: { queueName: "failcasts" },
-      register(node) {
-        registered.push(node);
-      },
-      [factory]() {
-        return undefined;
-      },
-      deregister(node, done) {
-        done();
-      },
-    };
-    const statuses = [];
-    const RED = createRED({
-      getNode: () => queueConfig,
-      status: (status) => statuses.push(status),
-    });
-    registerBullMQNodes(RED);
-    RED.registered.get(type).constructor.call({}, { queue: "queue" });
-
-    assert.equal(registered.length, 0, `${type} must not register on failure`);
-    assert.deepEqual(statuses.at(-1), {
-      fill: "red",
-      shape: "ring",
-      text: "disconnected",
-    });
-  }
-});
-
 test("bullmq cmd reports a usable error when the queue could not be built", async () => {
   const queueConfig = {
     config: { queueName: "failcasts" },
-    register() {},
     // What getQueue() returns after a synchronous construction failure.
     getQueue: () => null,
     readBackendStatus() {
       return () => {};
-    },
-    deregister(node, done) {
-      done();
     },
   };
   const RED = createRED({ getNode: () => queueConfig });

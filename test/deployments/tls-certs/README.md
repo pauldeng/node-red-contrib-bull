@@ -9,6 +9,8 @@ sanctioned by `docs/RULES.md`: it grants access to nothing, is never shipped
 That finding is expected and is not a leak. Do not replace these with anything
 issued by a real CA, and do not reuse them outside these fixtures.
 
-The fixtures run with certificate verification disabled because the
-certificate is self-signed. Verified TLS — `rejectUnauthorized: true` with a
-real CA — is covered by the AWS MemoryDB deployment path instead.
+The Docker topology fixtures disable certificate verification because the
+certificate is self-signed. The dedicated PostgreSQL TLS integration test
+passes `ca.crt` through Node-RED credentials and verifies it with
+`rejectUnauthorized: true`; AWS MemoryDB covers the same verified path for
+Redis.
