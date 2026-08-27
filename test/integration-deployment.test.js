@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { once } = require("node:events");
+const { EventEmitter, on, once } = require("node:events");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -85,23 +85,33 @@ async function waitForInput(node, timeoutMs = 10000) {
   return msg;
 }
 
-function waitForInputMessages(node, count, timeoutMs = 10000) {
-  return new Promise((resolve, reject) => {
-    const messages = [];
-    const timeout = setTimeout(() => {
-      node.removeListener("input", receive);
-      reject(new Error(`Timed out waiting for ${count} input messages`));
-    }, timeoutMs);
-    function receive(msg) {
+// events.on() is the multi-message counterpart to the once() above: it buffers
+// while the loop body runs, and breaking out of the loop removes the listener,
+// so nothing is dropped and nothing is left attached. The listener is
+// registered synchronously by the on() call, before the first await, which is
+// what lets a caller start waiting and only then trigger the work.
+async function waitForInputMessages(node, count, timeoutMs = 10000) {
+  const messages = [];
+  try {
+    for await (const [msg] of on(node, "input", {
+      signal: AbortSignal.timeout(timeoutMs),
+    })) {
       messages.push(msg);
       if (messages.length === count) {
-        clearTimeout(timeout);
-        node.removeListener("input", receive);
-        resolve(messages);
+        return messages;
       }
     }
-    node.on("input", receive);
-  });
+  } catch (err) {
+    // Keep the diagnostic the timeout deserves; a bare AbortError says nothing
+    // about how many of the expected messages did arrive.
+    if (err.name === "AbortError" || err.name === "TimeoutError") {
+      throw new Error(
+        `Timed out waiting for ${count} input messages (received ${messages.length})`,
+      );
+    }
+    throw err;
+  }
+  return messages;
 }
 
 async function startHelper() {
@@ -125,6 +135,14 @@ async function stopHelper(userDir) {
 function installTelemetryRecorder() {
   const spans = [];
   const metricRecords = [];
+  // The recorder is the only place a metric arrives, so make it the event
+  // source too: waitForMetric() below resolves off this emitter instead of
+  // polling metricRecords on an interval.
+  const recorded = new EventEmitter();
+  function record(name, value) {
+    metricRecords.push([name, value]);
+    recorded.emit(name);
+  }
   trace.setGlobalTracerProvider({
     getTracer() {
       return {
@@ -145,18 +163,25 @@ function installTelemetryRecorder() {
     getMeter() {
       return {
         createCounter(name) {
-          return { add: (value) => metricRecords.push([name, value]) };
+          return { add: (value) => record(name, value) };
         },
         createHistogram(name) {
-          return { record: (value) => metricRecords.push([name, value]) };
+          return { record: (value) => record(name, value) };
         },
         createGauge(name) {
-          return { record: (value) => metricRecords.push([name, value]) };
+          return { record: (value) => record(name, value) };
         },
       };
     },
   });
-  return { spans, metricRecords };
+  async function waitForMetric(name, timeoutMs = 5000) {
+    if (metricRecords.some(([recordedName]) => recordedName === name)) {
+      return;
+    }
+    await once(recorded, name, { signal: AbortSignal.timeout(timeoutMs) });
+  }
+
+  return { spans, metricRecords, waitForMetric };
 }
 
 test(
@@ -252,15 +277,7 @@ test(
 
       assert.equal((await addOutput).payload.name, "default");
       assert.equal((await runOutput).payload, "docker deployment payload");
-      const telemetryDeadline = Date.now() + 5000;
-      while (
-        !telemetry.metricRecords.some(
-          ([metricName]) => metricName === "bullmq.jobs.completed",
-        ) &&
-        Date.now() < telemetryDeadline
-      ) {
-        await sleep(25);
-      }
+      await telemetry.waitForMetric("bullmq.jobs.completed");
       assert.ok(telemetry.spans.some((name) => name.startsWith("add ")));
       assert.ok(telemetry.spans.some((name) => name.startsWith("process ")));
       assert.ok(
@@ -340,6 +357,10 @@ test(
       helper.getNode("cancel-all").receive(firstActive);
       assert.equal((await cancelAllOutput).payload, true);
 
+      // No local event source for this one: the flow under test has no bullmq
+      // events node, and adding one to observe the count would change what is
+      // being tested. Poll the datastore's own state instead -- a bounded
+      // retry on a real condition, not a fixed sleep.
       const cancelQueue = helper.getNode("cancel-queue").getQueue();
       const failedDeadline = Date.now() + 10000;
       while (

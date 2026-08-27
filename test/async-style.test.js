@@ -6,6 +6,7 @@ const test = require("node:test");
 const repoRoot = path.join(__dirname, "..");
 const productionFiles = [
   "bull-queue.js",
+  "lib/acknowledgements.js",
   "lib/commands.js",
   "lib/connections.js",
   "lib/scheduler.js",

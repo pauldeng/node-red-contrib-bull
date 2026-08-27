@@ -13,6 +13,19 @@ const {
   UnsupportedPostgresVersionError,
 } = require("bullmq");
 
+// A Node-RED node signals completion through the `done` callback it is handed,
+// not through an event or a promise, so this is the one place a Promise is
+// constructed by hand -- every call site below reads as a plain await.
+function emitInput(node, msg, send = () => {}) {
+  return new Promise((resolve) => {
+    node.emit("input", msg, send, resolve);
+  });
+}
+
+async function emitInputOk(node, msg, send) {
+  assert.ifError(await emitInput(node, msg, send));
+}
+
 function createRED(options = {}) {
   const registered = new Map();
   return {
@@ -216,14 +229,7 @@ test("bullmq flow applies config retention below flow and job overrides", async 
     },
   };
 
-  await new Promise((resolve, reject) => {
-    node.emit(
-      "input",
-      { payload, flowopts },
-      () => {},
-      (err) => (err ? reject(err) : resolve()),
-    );
-  });
+  await emitInputOk(node, { payload, flowopts });
 
   assert.equal(addCall.flow, payload);
   assert.deepEqual(addCall.options, {
@@ -812,14 +818,7 @@ test("bullmq flow adds an array of trees atomically through addBulk", async () =
       children: [{ name: "b-child", queueName: "queue-c", data: {} }],
     },
   ];
-  await new Promise((resolve) => {
-    node.emit(
-      "input",
-      { payload: trees },
-      (msg) => outputs.push(msg),
-      () => resolve(),
-    );
-  });
+  await emitInputOk(node, { payload: trees }, (msg) => outputs.push(msg));
 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].method, "addBulk", "an array must use addBulk");
@@ -854,14 +853,7 @@ test("bullmq flow rejects an empty array of trees", async () => {
   const node = {};
   RED.registered.get("bullmq flow").constructor.call(node, { queue: "queue" });
 
-  const err = await new Promise((resolve) => {
-    node.emit(
-      "input",
-      { payload: [] },
-      () => {},
-      (error) => resolve(error),
-    );
-  });
+  const err = await emitInput(node, { payload: [] });
   assert.match(String(err), /at least one flow tree/);
 });
 
@@ -907,7 +899,7 @@ test("config node keeps a live event over the memoized readiness promise", async
   // the promise built once in the constructor, and PostgresConnection memoizes
   // readyPromise the same way. It says "was ready once", never "is ready now".
   const backend = new EventEmitter();
-  backend.waitUntilReady = () => Promise.resolve();
+  backend.waitUntilReady = async () => {};
 
   node.watchBackend(backend);
   // The datastore drops before the seed lands. The live event must win, or the
@@ -940,7 +932,9 @@ test("config node reports disconnected when readiness rejects with no event", as
   // and LISTEN errors, and only when a listener is already attached. So a
   // rejection with no event is the postgres failure path, not a corner case.
   const backend = new EventEmitter();
-  backend.waitUntilReady = () => Promise.reject(new Error("ECONNREFUSED"));
+  backend.waitUntilReady = async () => {
+    throw new Error("ECONNREFUSED");
+  };
 
   node.watchBackend(backend);
   await tick();
@@ -969,8 +963,9 @@ test("config node reports why the backend is unavailable, not just that it is", 
   // this catch is the only place a bad password or a migration failure can
   // reach the user.
   const backend = new EventEmitter();
-  backend.waitUntilReady = () =>
-    Promise.reject(new Error("password authentication failed"));
+  backend.waitUntilReady = async () => {
+    throw new Error("password authentication failed");
+  };
 
   node.watchBackend(backend);
   await tick();
@@ -1047,8 +1042,9 @@ test("the same backend failure category reported twice yields one node.error", a
   // watchBackend, and bullmq events'/bullmq flow's own waitUntilReady catch)
   // independently hitting the identical failure on one deploy.
   const backend = new EventEmitter();
-  backend.waitUntilReady = () =>
-    Promise.reject(new SchemaMigrationRequiredError("bullmq"));
+  backend.waitUntilReady = async () => {
+    throw new SchemaMigrationRequiredError("bullmq");
+  };
   node.watchBackend(backend);
   await tick();
   await tick();
@@ -1087,9 +1083,7 @@ test("a config node's backend failure latch clears on close, so a later deploy r
 
   const closeHandler = node.listeners("close")[0];
   assert.ok(closeHandler, "config node must register a close handler");
-  await new Promise((resolve, reject) => {
-    closeHandler.call(node, false, (err) => (err ? reject(err) : resolve()));
-  });
+  await promisify(closeHandler).call(node, false);
 
   node.reportBackendFailure(new SchemaMigrationRequiredError("bullmq"));
   assert.equal(
@@ -1217,9 +1211,7 @@ test("bullmq cmd reports a usable error when the queue could not be built", asyn
   const node = {};
   RED.registered.get("bullmq cmd").constructor.call(node, { queue: "queue" });
 
-  const err = await new Promise((resolve) => {
-    node.emit("input", { cmd: "add", payload: "x" }, () => {}, resolve);
-  });
+  const err = await emitInput(node, { cmd: "add", payload: "x" });
   // Not a bare "Cannot read properties of null (reading 'add')".
   assert.match(String(err), /queue is unavailable/i);
 });

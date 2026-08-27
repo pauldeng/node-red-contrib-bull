@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const { once } = require("node:events");
 const net = require("node:net");
 const test = require("node:test");
 
@@ -346,10 +347,8 @@ test(
   { timeout: 3000 },
   async () => {
     const server = net.createServer((socket) => socket.destroy());
-    await new Promise((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(0, "127.0.0.1", resolve);
-    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening", { signal: AbortSignal.timeout(2000) });
 
     const port = server.address().port;
     const config = normalizeQueueConfig({
@@ -375,7 +374,8 @@ test(
       );
     } finally {
       connection.disconnect(false);
-      await new Promise((resolve) => server.close(resolve));
+      server.close();
+      await once(server, "close", { signal: AbortSignal.timeout(2000) });
     }
   },
 );
