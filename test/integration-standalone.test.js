@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const { spawn } = require("node:child_process");
-const { once } = require("node:events");
+const { on, once } = require("node:events");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -25,23 +25,33 @@ async function waitForInputMessage(node, timeoutMs) {
   return msg;
 }
 
-function waitForInputMessages(node, count, timeoutMs = 10000) {
-  return new Promise((resolve, reject) => {
-    const messages = [];
-    const timeout = setTimeout(() => {
-      node.removeListener("input", receive);
-      reject(new Error(`Timed out waiting for ${count} input messages`));
-    }, timeoutMs);
-    function receive(msg) {
+// events.on() is the multi-message counterpart to the once() above: it buffers
+// while the loop body runs, and breaking out of the loop removes the listener,
+// so nothing is dropped and nothing is left attached. The listener is
+// registered synchronously by the on() call, before the first await, which is
+// what lets a caller start waiting and only then trigger the work.
+async function waitForInputMessages(node, count, timeoutMs = 10000) {
+  const messages = [];
+  try {
+    for await (const [msg] of on(node, "input", {
+      signal: AbortSignal.timeout(timeoutMs),
+    })) {
       messages.push(msg);
       if (messages.length === count) {
-        clearTimeout(timeout);
-        node.removeListener("input", receive);
-        resolve(messages);
+        return messages;
       }
     }
-    node.on("input", receive);
-  });
+  } catch (err) {
+    // Keep the diagnostic the timeout deserves; a bare AbortError says nothing
+    // about how many of the expected messages did arrive.
+    if (err.name === "AbortError" || err.name === "TimeoutError") {
+      throw new Error(
+        `Timed out waiting for ${count} input messages (received ${messages.length})`,
+      );
+    }
+    throw err;
+  }
+  return messages;
 }
 
 async function startHelper() {
@@ -599,7 +609,10 @@ for (const adapter of ADAPTERS) {
         const cmd = helper.getNode("cmd");
         const cmdOut = helper.getNode("cmd-out");
         const eventsOut = helper.getNode("events-out");
-        await sleep(250);
+        // QueueEvents must be subscribed before the first command, or the
+        // deduplicated event this test asserts on is emitted into nothing.
+        // Its own readiness promise says exactly when that is true.
+        await helper.getNode("events").queueEvents.waitUntilReady();
 
         await receiveCommand(cmd, cmdOut, {
           cmd: "add",
@@ -896,6 +909,10 @@ for (const adapter of ADAPTERS) {
         helper.getNode("cancel-all").receive(first);
         assert.equal((await cancelOutput).payload, true);
 
+        // No local event source: this flow has no bullmq events node, and
+        // adding one to observe the count would change what is under test.
+        // Poll the datastore's own state -- a bounded retry on a real
+        // condition, not a fixed sleep.
         const queue = helper.getNode("queue").getQueue();
         const deadline = Date.now() + 10000;
         while ((await queue.getFailedCount()) !== 2 && Date.now() < deadline) {

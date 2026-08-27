@@ -81,6 +81,23 @@ async function settleWithin(promise, ms) {
   }
 }
 
+// Every test below wants the same starting state: each raw ioredis connection
+// this config node tracks has actually tried to reach the dead port and
+// failed. That failure is an event, so wait for it rather than guessing at a
+// delay -- a guess is either flaky on a loaded machine or slower than it needs
+// to be on an idle one.
+async function untilConnectionsFailed(server, timeoutMs = 5000) {
+  const signal = AbortSignal.timeout(timeoutMs);
+  const pending = Array.from(server.resources.entries())
+    .flat()
+    // ioredis reports "connecting" only until the first attempt resolves. Any
+    // other status against a dead port means it has already failed, and the
+    // "error" for it has already been emitted.
+    .filter((resource) => resource && resource.status === "connecting")
+    .map((connection) => once(connection, "error", { signal }));
+  await Promise.all(pending);
+}
+
 function forceCleanup(server) {
   const resources =
     server.resources instanceof Map
@@ -105,7 +122,7 @@ test("bullmq-queue-server close settles promptly when Redis is unreachable", asy
 
   try {
     server.getQueue();
-    await delay(200);
+    await untilConnectionsFailed(server);
 
     const result = await settleWithin(invokeClose(server), CLOSE_DEADLINE_MS);
     assert.equal(
@@ -153,7 +170,7 @@ test("bullmq run close settles promptly when Redis is unreachable", async () => 
 
   try {
     RunNode.call(runNode, { queue: "queue", completionMode: "immediate" });
-    await delay(200);
+    await untilConnectionsFailed(server);
 
     const result = await settleWithin(invokeClose(runNode), CLOSE_DEADLINE_MS);
     assert.equal(
@@ -186,7 +203,7 @@ test("bullmq events close settles promptly when Redis is unreachable", async () 
 
   try {
     EventsNode.call(eventsNode, { queue: "queue" });
-    await delay(200);
+    await untilConnectionsFailed(server);
 
     const result = await settleWithin(
       invokeClose(eventsNode),
@@ -222,7 +239,7 @@ test("bullmq flow close settles promptly when Redis is unreachable", async () =>
 
   try {
     FlowNode.call(flowNode, { queue: "queue" });
-    await delay(200);
+    await untilConnectionsFailed(server);
 
     const result = await settleWithin(invokeClose(flowNode), CLOSE_DEADLINE_MS);
     assert.equal(
@@ -262,7 +279,7 @@ test("runtime partial closes release raw Redis connections", async () => {
     RED.registered
       .get("bullmq flow")
       .constructor.call(flowNode, { queue: "queue" });
-    await delay(200);
+    await untilConnectionsFailed(server);
 
     assert.ok(server.resources instanceof Map);
     const ownedResources = [
@@ -457,12 +474,18 @@ test("config close stops BullMQ worker timers after a forced disconnect", async 
 test("bullmq run reports a uniform disconnected status when Redis is unreachable", async () => {
   let server;
   const statuses = [];
+  // Resolves on the first red status instead of polling for one: the status
+  // callback IS the event, so there is nothing to wait an interval for.
+  const reachedRed = new EventEmitter();
   const RED = createRED({
     getNode() {
       return server;
     },
     status(status) {
       statuses.push(status);
+      if (status.fill === "red") {
+        reachedRed.emit("red");
+      }
     },
   });
   registerBullMQNodes(RED);
@@ -473,12 +496,8 @@ test("bullmq run reports a uniform disconnected status when Redis is unreachable
   try {
     RunNode.call(runNode, { queue: "queue", completionMode: "immediate" });
 
-    const deadline = Date.now() + 3000;
-    while (
-      Date.now() < deadline &&
-      !statuses.some((status) => status.fill === "red")
-    ) {
-      await delay(50);
+    if (!statuses.some((status) => status.fill === "red")) {
+      await once(reachedRed, "red", { signal: AbortSignal.timeout(3000) });
     }
 
     const redStatuses = statuses.filter((status) => status.fill === "red");

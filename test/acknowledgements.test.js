@@ -183,8 +183,9 @@ test("does not leak entries under repeated completion", async () => {
     await settled;
   }
 
-  // Give any asynchronous cleanup a chance to run.
-  await sleep(0);
+  // No settling delay to wait out: the registry's own "settled" listener
+  // deletes the entry inside settle(), so awaiting each wait() above is
+  // already proof that cleanup has run.
   assert.equal(registry.entries.size, 0);
 });
 
@@ -338,20 +339,21 @@ function setupCancelHarness() {
     return { ackId: sent.at(-1).bull.ackId, controller, resultPromise };
   }
 
+  // Resolves when the bullmq job node calls its `done` callback, which is the
+  // node's own completion signal. Awaiting it replaces guessing at a delay:
+  // the actions that await a job method (moveToWait, moveToDelayed,
+  // updateData) settle a turn or more after emit() returns, and the ones that
+  // do not (complete, cancelJob) settle inside it.
   function dispatch(msg) {
     const outputs = [];
-    let doneErr;
-    let doneCalled = false;
-    jobNode.emit(
-      "input",
-      msg,
-      (m) => outputs.push(m),
-      (err) => {
-        doneCalled = true;
-        doneErr = err;
-      },
-    );
-    return { outputs, doneErr, doneCalled };
+    return new Promise((resolve) => {
+      jobNode.emit(
+        "input",
+        msg,
+        (m) => outputs.push(m),
+        (doneErr) => resolve({ outputs, doneErr, doneCalled: true }),
+      );
+    });
   }
 
   return { processor, worker, runJob, dispatch };
@@ -370,7 +372,7 @@ test("cancelJob reaches the owning worker with the job id and the resolved reaso
   const harness = setupCancelHarness();
   const { ackId, resultPromise } = harness.runJob("job-1");
 
-  const result = harness.dispatch({ cmd: "cancelJob", bull: { ackId } });
+  const result = await harness.dispatch({ cmd: "cancelJob", bull: { ackId } });
 
   assert.deepEqual(harness.worker.cancelJobCalls, [
     { jobId: "job-1", reason: "BullMQ job cancelled" },
@@ -385,7 +387,7 @@ test("cancelJob uses msg.reason when the caller provides one", async () => {
   const harness = setupCancelHarness();
   const { ackId, resultPromise } = harness.runJob("job-1");
 
-  harness.dispatch({
+  await harness.dispatch({
     cmd: "cancelJob",
     bull: { ackId },
     reason: "operator abort",
@@ -401,7 +403,7 @@ test("cancelJob treats a false result from BullMQ as an error", async () => {
   // No cancellable processor found for this job id.
   harness.worker.tracked.delete("job-1");
 
-  const result = harness.dispatch({ cmd: "cancelJob", bull: { ackId } });
+  const result = await harness.dispatch({ cmd: "cancelJob", bull: { ackId } });
 
   assert.equal(result.doneCalled, true);
   assert.match(
@@ -410,7 +412,7 @@ test("cancelJob treats a false result from BullMQ as an error", async () => {
   );
 
   // Settle the survivor so the test leaves no dangling waiter.
-  harness.dispatch({ cmd: "complete", bull: { ackId }, payload: "done" });
+  await harness.dispatch({ cmd: "complete", bull: { ackId }, payload: "done" });
   assert.equal(await resultPromise, "done");
 });
 
@@ -419,7 +421,7 @@ test("cancelAllJobs aborts every active acknowledgement for that run node", asyn
   const first = harness.runJob("job-1");
   const second = harness.runJob("job-2");
 
-  const result = harness.dispatch({
+  const result = await harness.dispatch({
     cmd: "cancelAllJobs",
     bull: { ackId: first.ackId },
   });
@@ -430,7 +432,7 @@ test("cancelAllJobs aborts every active acknowledgement for that run node", asyn
   await assert.rejects(second.resultPromise, /BullMQ job cancelled/);
 
   // Both acknowledgements are gone from the registry now.
-  const stale = harness.dispatch({
+  const stale = await harness.dispatch({
     cmd: "complete",
     bull: { ackId: second.ackId },
   });
@@ -444,13 +446,16 @@ test("a cancellation and a later completion attempt on the same ack settle exact
   const harness = setupCancelHarness();
   const { ackId, resultPromise } = harness.runJob("job-1");
 
-  const cancelResult = harness.dispatch({ cmd: "cancelJob", bull: { ackId } });
+  const cancelResult = await harness.dispatch({
+    cmd: "cancelJob",
+    bull: { ackId },
+  });
   assert.equal(cancelResult.outputs[0].payload, true);
   await assert.rejects(resultPromise, /BullMQ job cancelled/);
 
   // A "complete" action racing in after cancellation already settled the
   // acknowledgement must not resurrect or re-settle it.
-  const completeResult = harness.dispatch({
+  const completeResult = await harness.dispatch({
     cmd: "complete",
     bull: { ackId },
     payload: "too-late",
@@ -465,10 +470,13 @@ test("a stale/settled ackId cannot be cancelled", async () => {
   const harness = setupCancelHarness();
   const { ackId, resultPromise } = harness.runJob("job-1");
 
-  harness.dispatch({ cmd: "complete", bull: { ackId }, payload: "done" });
+  await harness.dispatch({ cmd: "complete", bull: { ackId }, payload: "done" });
   assert.equal(await resultPromise, "done");
 
-  const cancelResult = harness.dispatch({ cmd: "cancelJob", bull: { ackId } });
+  const cancelResult = await harness.dispatch({
+    cmd: "cancelJob",
+    bull: { ackId },
+  });
   assert.match(
     String(cancelResult.doneErr && cancelResult.doneErr.message),
     /Missing, stale/,
@@ -488,9 +496,8 @@ test("moveToWait hands the lock token back and settles with WaitingError", async
     },
   });
 
-  const result = harness.dispatch({ cmd: "moveToWait", bull: { ackId } });
+  const result = await harness.dispatch({ cmd: "moveToWait", bull: { ackId } });
   await assert.rejects(resultPromise, (err) => err.name === "WaitingError");
-  await sleep(10);
 
   assert.deepEqual(calls, [{ method: "moveToWait", token: "lock-token" }]);
   assert.equal(result.outputs[0].payload, true);
@@ -506,9 +513,12 @@ test("moveToDelayed delays from now and settles with DelayedError", async () => 
     },
   });
 
-  harness.dispatch({ cmd: "moveToDelayed", delay: 5000, bull: { ackId } });
+  await harness.dispatch({
+    cmd: "moveToDelayed",
+    delay: 5000,
+    bull: { ackId },
+  });
   await assert.rejects(resultPromise, (err) => err.name === "DelayedError");
-  await sleep(10);
 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].token, "lock-token");
@@ -522,22 +532,23 @@ test("moveToDelayed requires a delay", async () => {
   const harness = setupCancelHarness();
   const { ackId } = harness.runJob("job-1", { async moveToDelayed() {} });
 
-  const result = harness.dispatch({ cmd: "moveToDelayed", bull: { ackId } });
-  await sleep(10);
+  const result = await harness.dispatch({
+    cmd: "moveToDelayed",
+    bull: { ackId },
+  });
   assert.match(String(result.doneErr), /msg\.delay/);
 });
 
 test("moveToWaitingChildren is not a supported Node-RED action", async () => {
   const harness = setupCancelHarness();
   const job = harness.runJob("job-1");
-  const result = harness.dispatch({
+  const result = await harness.dispatch({
     cmd: "moveToWaitingChildren",
     bull: { ackId: job.ackId },
   });
-  await sleep(10);
   assert.match(String(result.doneErr), /Unsupported bullmq job action/);
 
-  harness.dispatch({ cmd: "complete", bull: { ackId: job.ackId } });
+  await harness.dispatch({ cmd: "complete", bull: { ackId: job.ackId } });
   await job.resultPromise;
 });
 
@@ -550,16 +561,15 @@ test("updateData persists step state without settling the acknowledgement", asyn
     },
   });
 
-  harness.dispatch({
+  await harness.dispatch({
     cmd: "updateData",
     jobData: { step: "second" },
     bull: { ackId },
   });
-  await sleep(10);
   assert.deepEqual(stored, [{ step: "second" }]);
 
   // Still the flow's to settle.
-  harness.dispatch({ cmd: "complete", payload: "done", bull: { ackId } });
+  await harness.dispatch({ cmd: "complete", payload: "done", bull: { ackId } });
   assert.equal(await resultPromise, "done");
 });
 
@@ -572,14 +582,13 @@ test("the lock token never reaches a Node-RED message", async () => {
     async updateData() {},
   });
 
-  const update = harness.dispatch({
+  const update = await harness.dispatch({
     cmd: "updateData",
     payload: { step: 1 },
     bull: { ackId },
   });
-  const wait = harness.dispatch({ cmd: "moveToWait", bull: { ackId } });
+  const wait = await harness.dispatch({ cmd: "moveToWait", bull: { ackId } });
   await assert.rejects(resultPromise, (err) => err.name === "WaitingError");
-  await sleep(10);
 
   for (const msg of [...update.outputs, ...wait.outputs]) {
     assert.doesNotMatch(

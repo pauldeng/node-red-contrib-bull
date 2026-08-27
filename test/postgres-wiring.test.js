@@ -71,6 +71,17 @@ class FakePgPool extends EventEmitter {
   async end() {}
 }
 
+// The fake pool throws on every operation, so a graceful close always rejects
+// here. Swallow it in one place rather than tacking .catch(() => {}) onto each
+// teardown.
+async function closeQuietly(resource) {
+  try {
+    await resource.close();
+  } catch {
+    // teardown only: there is no live database behind any of these resources
+  }
+}
+
 function postgresConfig(overrides = {}) {
   return {
     backend: "postgres",
@@ -130,7 +141,7 @@ test("postgres getQueue builds a PostgresQueueBackend and never creates a Redis 
       "getProducerConnection has nothing to return on postgres",
     );
   } finally {
-    await queue.close().catch(() => {});
+    await closeQuietly(queue);
   }
 });
 
@@ -157,7 +168,7 @@ test("postgres createWorker builds a PostgresQueueBackend at the worker factory 
       "the worker owner must be tracked with no raw connection",
     );
   } finally {
-    await worker.close().catch(() => {});
+    await closeQuietly(worker);
   }
 });
 
@@ -188,7 +199,7 @@ test("postgres createQueueEvents builds a PostgresQueueBackend", async () => {
       "the queueEvents owner must be tracked with no raw connection",
     );
   } finally {
-    await queueEvents.close().catch(() => {});
+    await closeQuietly(queueEvents);
   }
 });
 
@@ -213,7 +224,7 @@ test("postgres createFlowProducer builds a PostgresQueueBackend", async () => {
       "the flowProducer owner must be tracked with no raw connection",
     );
   } finally {
-    await flowProducer.close().catch(() => {});
+    await closeQuietly(flowProducer);
   }
 });
 
@@ -246,7 +257,7 @@ test("a redis config still builds the Redis backend and still creates a connecti
       "the redis path still tracks the connection it created",
     );
   } finally {
-    await queue.close().catch(() => {});
+    await closeQuietly(queue);
   }
 });
 
@@ -278,4 +289,60 @@ test("prefix is not passed on the postgres path even when a switched flow still 
     "postgres BullMQ options must never carry a prefix",
   );
   assert.equal(options.connection, config.postgres);
+});
+
+test("the shared pool config survives being handed to four backends", async () => {
+  // Every resource gets its own PostgresConnection built from the *same*
+  // node.config.postgres object (buildBullMQOptions passes it by reference,
+  // pinned above). BullMQ strips schema/skipVersionCheck/migrate/skipMigrations
+  // before forwarding the rest to `new pg.Pool`, so if it ever did that by
+  // mutation instead of by copy, the first resource would silently steal the
+  // schema and migrate settings and the other three would run against
+  // PostgreSQL's default schema. That is a wrong-data failure, not a crash,
+  // so it is pinned against the installed BullMQ rather than assumed.
+  //
+  // Socket-free by construction: pg.Pool opens nothing until a client is
+  // checked out, and nothing here checks one out.
+  const { PostgresConnection } = require("bullmq");
+  const { postgres } = normalizePostgresConfig(
+    {
+      name: "pgcasts",
+      address: "127.0.0.1",
+      database: "bullmq",
+      username: "bullmq",
+      schema: "custom_schema",
+      max: "3",
+      migrate: true,
+    },
+    {},
+  );
+  const before = { ...postgres };
+
+  const connections = [];
+  try {
+    for (let resource = 0; resource < 4; resource += 1) {
+      const connection = new PostgresConnection(postgres);
+      connections.push(connection);
+      assert.equal(
+        connection.schema,
+        "custom_schema",
+        `resource ${resource} must still see the configured schema`,
+      );
+      assert.equal(
+        connection.migrateOnConnect,
+        true,
+        `resource ${resource} must still run migrations`,
+      );
+    }
+  } finally {
+    for (const connection of connections) {
+      await closeQuietly(connection);
+    }
+  }
+
+  assert.deepEqual(
+    postgres,
+    before,
+    "BullMQ must not mutate the config object shared by every resource",
+  );
 });
