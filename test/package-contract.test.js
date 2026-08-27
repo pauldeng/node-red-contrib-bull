@@ -205,7 +205,7 @@ test("GitHub CI workflow verifies the Node-RED package release contract", () => 
     "npm audit --omit=dev --audit-level=moderate",
     "npm pack --dry-run",
   ]) {
-    assert.match(ci, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.ok(ci.includes(text), `must include ${text}`);
   }
 });
 
@@ -226,10 +226,7 @@ test("GitHub publish workflow uses npm trusted publishing", () => {
     "npm pack --dry-run",
     "npm publish --access public",
   ]) {
-    assert.match(
-      publish,
-      new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
-    );
+    assert.ok(publish.includes(text), `must include ${text}`);
   }
 });
 
@@ -243,10 +240,7 @@ test("Dependabot keeps npm and GitHub Actions dependencies current", () => {
     'directory: "/"',
     "interval: weekly",
   ]) {
-    assert.match(
-      dependabot,
-      new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
-    );
+    assert.ok(dependabot.includes(text), `must include ${text}`);
   }
 });
 
@@ -268,14 +262,11 @@ test("GitHub community templates collect actionable reports", () => {
     "Valkey",
     "Reproducing Node-RED flow",
   ]) {
-    assert.match(bug, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.ok(bug.includes(text), `must include ${text}`);
   }
 
   for (const text of ["Use case", "Proposed behavior"]) {
-    assert.match(
-      feature,
-      new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
-    );
+    assert.ok(feature.includes(text), `must include ${text}`);
   }
 
   assert.doesNotMatch(feature, /Alternatives/);
@@ -287,6 +278,6 @@ test("GitHub community templates collect actionable reports", () => {
     "npm run test:playwright",
     "Documentation",
   ]) {
-    assert.match(pr, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.ok(pr.includes(text), `must include ${text}`);
   }
 });
