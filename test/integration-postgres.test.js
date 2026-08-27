@@ -5,16 +5,13 @@
 // acknowledgement completes a BullMQ job through bullmq job" test.
 
 const assert = require("node:assert/strict");
-const { execFile, execFileSync } = require("node:child_process");
 const { once } = require("node:events");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { setTimeout: sleep } = require("node:timers/promises");
 const test = require("node:test");
-const { promisify } = require("node:util");
 
-const { Client: PgClient } = require("pg");
 const {
   DEFAULT_SCHEMA,
   LATEST_SCHEMA_VERSION,
@@ -22,21 +19,19 @@ const {
 } = require("bullmq");
 const helper = require("node-red-node-test-helper");
 const bullNodes = require("../bull-queue");
+const {
+  POSTGRES_ADAPTER,
+  dockerAvailable,
+  postgresClient,
+  startPostgres,
+} = require("./helpers/stores");
 
-const execFileAsync = promisify(execFile);
-
-const POSTGRES_IMAGE = "postgres:17-alpine";
+// The container harness and the config-node shape are shared with the
+// parameterized suite, so both see the same fixture.
+const postgresQueueConfig = (id, name, postgres, extra) =>
+  POSTGRES_ADAPTER.queueConfig(id, name, postgres, extra);
 
 const enabled = process.env.BULLMQ_INTEGRATION_POSTGRES === "1";
-
-function dockerAvailable() {
-  try {
-    execFileSync("docker", ["info"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 // Computed once, lazily, so a disabled run never even shells out to docker.
 let skipReason;
@@ -105,142 +100,6 @@ function errorLogEntries() {
   return spy.args
     .map(([entry]) => entry)
     .filter((entry) => entry.level === spy.ERROR);
-}
-
-function postgresQueueConfig(id, name, postgres, extra = {}) {
-  return {
-    id,
-    type: "bullmq-queue-server",
-    name,
-    backend: "postgres",
-    address: "127.0.0.1",
-    port: String(postgres.port),
-    database: postgres.database,
-    username: postgres.user,
-    ...extra,
-  };
-}
-
-function postgresClient(postgres) {
-  return new PgClient({
-    host: "127.0.0.1",
-    port: postgres.port,
-    user: postgres.user,
-    password: postgres.password,
-    database: postgres.database,
-  });
-}
-
-async function pgIsReadyOnce(port, user, database) {
-  try {
-    await execFileAsync("pg_isready", [
-      "-h",
-      "127.0.0.1",
-      "-p",
-      String(port),
-      "-U",
-      user,
-      "-d",
-      database,
-      "-t",
-      "2",
-    ]);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// READINESS TRAP: the official image's entrypoint starts the server DURING
-// initdb, then restarts it. A probe that succeeds in that window is a false
-// ready, and the restart drops the connection moments later. Probing over
-// TCP (rather than the Unix socket, the only listener during init) and
-// requiring two consecutive successes catches the restart: a probe made
-// during it fails and resets the streak.
-async function waitForPostgresReady(port, user, database, timeoutMs = 30000) {
-  const deadline = Date.now() + timeoutMs;
-  let consecutive = 0;
-  while (Date.now() < deadline) {
-    if (await pgIsReadyOnce(port, user, database)) {
-      consecutive += 1;
-      if (consecutive >= 2) {
-        return;
-      }
-    } else {
-      consecutive = 0;
-    }
-    await sleep(300);
-  }
-  throw new Error(
-    `Timed out waiting for PostgreSQL to become ready on port ${port}`,
-  );
-}
-
-// Runs the official image in Docker and returns { port, stop }, mirroring
-// integration-standalone.test.js's startRedis().
-async function startPostgres() {
-  const name = `bullmq-pg-test-${process.pid}-${Date.now()}`;
-  const user = "bullmq";
-  const password = "bullmqpw";
-  const database = "bullmq";
-
-  await execFileAsync("docker", [
-    "run",
-    "-d",
-    "--name",
-    name,
-    "--shm-size",
-    "128mb",
-    "-e",
-    `POSTGRES_PASSWORD=${password}`,
-    "-e",
-    `POSTGRES_USER=${user}`,
-    "-e",
-    `POSTGRES_DB=${database}`,
-    // Let Docker choose the host port and then read back the mapping it
-    // published. Picking a random port ourselves races anything else on the
-    // machine -- a parallel run, or an unrelated local service -- and the
-    // container owns the listener until we ask, so there is no window between
-    // probing a port and binding it.
-    "-p",
-    "127.0.0.1::5432",
-    POSTGRES_IMAGE,
-  ]);
-
-  // -v removes the anonymous volume the postgres image declares for its
-  // data directory. Without it every run leaks one, and enough runs fill
-  // the host disk -- which surfaces as initdb failing with "No space left
-  // on device", not as anything resembling a test problem.
-  async function stop() {
-    try {
-      await execFileAsync("docker", ["rm", "-f", "-v", name]);
-    } catch {
-      // best effort after a failed test
-    }
-  }
-
-  let port;
-  try {
-    const { stdout } = await execFileAsync("docker", ["port", name, "5432"]);
-    // e.g. "127.0.0.1:49154" (possibly several lines, one per family)
-    const match = stdout.match(/:(\d+)\s*$/m);
-    if (!match) {
-      throw new Error(`could not read the published port from: ${stdout}`);
-    }
-    port = Number(match[1]);
-  } catch (err) {
-    await stop();
-    throw err;
-  }
-
-  try {
-    await waitForPostgresReady(port, user, database);
-  } catch (err) {
-    await stop();
-    throw err;
-  }
-
-  return { port, user, password, database, stop };
 }
 
 async function startHelper() {

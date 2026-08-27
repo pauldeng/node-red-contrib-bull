@@ -28,6 +28,9 @@ const SENTINEL_TLS_MASTER_PORT =
 const SENTINEL_TLS_PORT_A = process.env.BULLMQ_SENTINEL_TLS_PORT_A || "26393";
 const SENTINEL_TLS_PORT_B = process.env.BULLMQ_SENTINEL_TLS_PORT_B || "26394";
 const SENTINEL_TLS_PORT_C = process.env.BULLMQ_SENTINEL_TLS_PORT_C || "26395";
+const POSTGRES_PLAIN_PORT = process.env.BULLMQ_POSTGRES_PLAIN_PORT || "15432";
+const POSTGRES_TLS_PORT = process.env.BULLMQ_POSTGRES_TLS_PORT || "15433";
+const POSTGRES_DATABASE = "bullmq";
 
 let dockerCommand = ["docker"];
 
@@ -296,6 +299,9 @@ function runExternalIntegration(env) {
 function deploymentEnv(name, overrides = {}) {
   return {
     BULLMQ_DEPLOYMENT_NAME: name,
+    // Absent means Redis, matching the runtime's own reading of a config node
+    // with no backend property.
+    BULLMQ_BACKEND: "redis",
     BULLMQ_HOST: "127.0.0.1",
     BULLMQ_PORT: "6379",
     ...overrides,
@@ -319,6 +325,44 @@ function runDeployment(deployment) {
       allowFailure: true,
     });
   }
+}
+
+// READINESS TRAP, and the reason this is not a single successful probe: the
+// official postgres image's entrypoint starts the server DURING initdb and
+// then restarts it, so a probe that succeeds inside that window reports a
+// server that is about to drop the connection. Probing over TCP rather than
+// the unix socket (which is up during initdb) and requiring two consecutive
+// successes straddles the restart. Same rule as
+// test/helpers/stores.js's waitForPostgresReady, for the same reason.
+function waitForPostgres(name) {
+  let consecutive = 0;
+  waitUntil(
+    `${name} PostgreSQL`,
+    () => {
+      const result = dockerCapture(
+        composeArgs(name, [
+          "exec",
+          "-T",
+          "postgres",
+          "pg_isready",
+          "-h",
+          "127.0.0.1",
+          "-U",
+          AUTH_USERNAME,
+          "-d",
+          POSTGRES_DATABASE,
+          "-t",
+          "2",
+        ]),
+      );
+      consecutive = result.status === 0 ? consecutive + 1 : 0;
+      result.ready = consecutive >= 2;
+      return result;
+    },
+    // Longer than the Redis probes: initdb plus the entrypoint restart, and on
+    // the TLS fixture a first-run image build as well.
+    120000,
+  );
 }
 
 function memoryDbEnv() {
@@ -425,6 +469,31 @@ function main() {
         BULLMQ_TLS_REJECT_UNAUTHORIZED: "false",
       }),
       wait: waitForSentinelTls,
+    },
+    {
+      name: "postgres-plain",
+      env: deploymentEnv("postgres-plain", {
+        BULLMQ_BACKEND: "postgres",
+        BULLMQ_PORT: POSTGRES_PLAIN_PORT,
+        BULLMQ_DATABASE: POSTGRES_DATABASE,
+        BULLMQ_USERNAME: AUTH_USERNAME,
+        BULLMQ_PASSWORD: AUTH_PASSWORD,
+      }),
+      wait: () => waitForPostgres("postgres-plain"),
+    },
+    {
+      name: "postgres-tls",
+      env: deploymentEnv("postgres-tls", {
+        BULLMQ_BACKEND: "postgres",
+        BULLMQ_PORT: POSTGRES_TLS_PORT,
+        BULLMQ_DATABASE: POSTGRES_DATABASE,
+        BULLMQ_USERNAME: AUTH_USERNAME,
+        BULLMQ_PASSWORD: AUTH_PASSWORD,
+        BULLMQ_TLS: "true",
+        // Self-signed fixture certificate, same as the Redis TLS deployments.
+        BULLMQ_TLS_REJECT_UNAUTHORIZED: "false",
+      }),
+      wait: () => waitForPostgres("postgres-tls"),
     },
   ];
 

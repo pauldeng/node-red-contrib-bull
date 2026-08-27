@@ -217,9 +217,9 @@ async function startPostgresTls() {
       "-c",
       "ssl=on",
       "-c",
-      "ssl_cert_file=/var/lib/postgresql/tls/server.crt",
+      "ssl_cert_file=/etc/postgresql/tls/server.crt",
       "-c",
-      "ssl_key_file=/var/lib/postgresql/tls/server.key",
+      "ssl_key_file=/etc/postgresql/tls/server.key",
     ]);
   } catch (err) {
     await removeImage();
