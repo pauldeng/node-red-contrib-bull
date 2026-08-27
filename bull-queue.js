@@ -70,7 +70,10 @@ const GRACEFUL_CLOSE_MS = 10000;
 // connect. Unlike Redis, it has no raw client that we can force closed, so its
 // close budget needs scheduling margin beyond that timeout. Derived from the
 // timeout it has to outlast rather than written as a literal, so raising
-// POSTGRES_CONNECTION_TIMEOUT_MS cannot silently leave the budget short.
+// POSTGRES_CONNECTION_TIMEOUT_MS cannot silently leave the budget short. It
+// has a ceiling as well as a floor: Node-RED gives each node ~15s to close, so
+// POSTGRES_CONNECTION_TIMEOUT_MS must stay well under 14s or this budget stops
+// bounding anything and Node-RED's own timeout cuts the close off instead.
 const POSTGRES_CLOSE_MS = POSTGRES_CONNECTION_TIMEOUT_MS + CLOSE_GRACE_MS;
 
 function closeBudgetFor(connection) {
@@ -247,7 +250,9 @@ function withFlowJobDefaults(flow, flowOptions, defaultJobOptions) {
 
   const options =
     flowOptions && typeof flowOptions === "object" ? flowOptions : {};
-  let queuesOptions = { ...options.queuesOptions };
+  // Already a fresh copy, so later queues are assigned into it rather than
+  // re-spreading the whole map per queue name.
+  const queuesOptions = { ...options.queuesOptions };
   const pending = [flow];
 
   while (pending.length > 0) {
@@ -257,14 +262,11 @@ function withFlowJobDefaults(flow, flowOptions, defaultJobOptions) {
     }
     if (typeof job.queueName === "string" && job.queueName) {
       const queueOptions = queuesOptions[job.queueName] || {};
-      queuesOptions = {
-        ...queuesOptions,
-        [job.queueName]: {
-          ...queueOptions,
-          defaultJobOptions: {
-            ...defaultJobOptions,
-            ...queueOptions.defaultJobOptions,
-          },
+      queuesOptions[job.queueName] = {
+        ...queueOptions,
+        defaultJobOptions: {
+          ...defaultJobOptions,
+          ...queueOptions.defaultJobOptions,
         },
       };
     }
@@ -484,63 +486,78 @@ module.exports = function registerBullMQNodes(RED) {
       await closeResourcePair(owner, connection);
     };
 
-    // BullMQ's postgres factory validates the schema name and synchronously
-    // loads the optional `pg` module (createPostgresBackend -> new
-    // PostgresConnection) before any resource exists, so a bad schema name or
-    // a missing `pg` install throws out of `new Queue/Worker/QueueEvents/
-    // FlowProducer(...)` itself rather than through waitUntilReady(). Catch
-    // that here instead of crashing the owning node's constructor.
-    function buildPostgresResource(build) {
-      try {
-        return build();
-      } catch (err) {
-        publishBackendStatus("disconnected");
-        node.reportBackendFailure(err);
-        return undefined;
+    // The four BullMQ owners differ only in which constructor they call and
+    // where that constructor takes the backend factory: Queue and QueueEvents
+    // take it 3rd, Worker 4th, FlowProducer 2nd. Everything around that is the
+    // same work, so `construct` receives the built options plus the factory to
+    // pass on -- undefined on Redis, where every one of those constructors
+    // defaults the parameter to BullMQ's own Redis factory.
+    //
+    // On PostgreSQL, BullMQ's factory validates the schema name and
+    // synchronously loads the optional `pg` module (createPostgresBackend ->
+    // new PostgresConnection) before any resource exists, so a bad schema name
+    // or a missing `pg` install throws out of `new Queue/Worker/QueueEvents/
+    // FlowProducer(...)` itself rather than through waitUntilReady(). Catch it
+    // here instead of crashing the owning node's constructor.
+    function createResource(role, owner, telemetry, construct, extraOptions) {
+      // BullMQ owns every PostgreSQL connection (a pool plus a dedicated
+      // LISTEN client per backend); this package builds none of its own on
+      // that path, so createConnection is skipped entirely.
+      const isPostgres = node.config.backend === "postgres";
+      const connection = isPostgres
+        ? undefined
+        : node.createConnection(role, owner);
+      const options = {
+        ...buildBullMQOptions(
+          node.config,
+          isPostgres ? node.config.postgres : connection,
+          telemetry,
+          role,
+        ),
+        ...extraOptions,
+      };
+
+      let resource;
+      if (isPostgres) {
+        try {
+          resource = construct(options, createPostgresBackend);
+        } catch (err) {
+          publishBackendStatus("disconnected");
+          node.reportBackendFailure(err);
+          return { resource: undefined, connection };
+        }
+      } else {
+        resource = construct(options);
       }
+
+      // On postgres there is no connection of our own -- the owner is tracked
+      // with no value so close/redeploy still walks it, but has nothing raw to
+      // close.
+      node.resources.set(resource, connection);
+      return { resource, connection };
     }
 
     node.getQueue = function getQueue() {
       if (!node.queue) {
-        // BullMQ owns every PostgreSQL connection (a pool plus a dedicated
-        // LISTEN client per backend); this package builds none of its own on
-        // that path, so createConnection is skipped entirely.
-        const isPostgres = node.config.backend === "postgres";
-        if (!isPostgres) {
-          node.producerConnection = node.createConnection("producer");
-        }
-        const queueOptions = buildBullMQOptions(
-          node.config,
-          isPostgres ? node.config.postgres : node.producerConnection,
-          node.getTelemetry(),
+        const { resource, connection } = createResource(
           "producer",
+          node,
+          node.getTelemetry(),
+          (options, factory) =>
+            new Queue(node.config.queueName, options, factory),
+          // Queue-level auto-removal. Without it BullMQ keeps every completed
+          // and failed job forever, which is the unbounded growth its
+          // production guide warns about. Per-job msg.jobopts still wins.
+          node.config.defaultJobOptions
+            ? { defaultJobOptions: node.config.defaultJobOptions }
+            : undefined,
         );
-        // Queue-level auto-removal. Without it BullMQ keeps every completed and
-        // failed job forever, which is the unbounded growth its production
-        // guide warns about. Per-job msg.jobopts still wins.
-        if (node.config.defaultJobOptions) {
-          queueOptions.defaultJobOptions = node.config.defaultJobOptions;
-        }
-        node.queue = isPostgres
-          ? buildPostgresResource(
-              () =>
-                new Queue(
-                  node.config.queueName,
-                  queueOptions,
-                  createPostgresBackend,
-                ),
-            )
-          : new Queue(node.config.queueName, queueOptions);
-        if (!node.queue) {
+        if (!resource) {
           return null;
         }
+        node.queue = resource;
+        node.producerConnection = connection || null;
         node.watchBackend(node.queue.getBackend());
-        // No connection of our own on postgres -- the owner is tracked with no
-        // value so close/redeploy still walks it, but has nothing raw to close.
-        node.resources.set(
-          node.queue,
-          isPostgres ? undefined : node.producerConnection,
-        );
         attachErrorListener(node.queue, node);
       }
       return node.queue;
@@ -623,83 +640,34 @@ module.exports = function registerBullMQNodes(RED) {
     // error listener, so worker/events/flow errors surface on the visible
     // runtime node rather than the hidden config node.
     node.createWorker = function createWorker(processor, options, owner = node) {
-      const isPostgres = node.config.backend === "postgres";
-      const connection = isPostgres
-        ? undefined
-        : node.createConnection("worker", owner);
-      const workerOptions = {
-        ...buildBullMQOptions(
-          node.config,
-          isPostgres ? node.config.postgres : connection,
-          node.getTelemetry(),
-          "worker",
-        ),
-        ...options,
-      };
-      const worker = isPostgres
-        ? buildPostgresResource(
-            () =>
-              new Worker(
-                node.config.queueName,
-                processor,
-                workerOptions,
-                createPostgresBackend,
-              ),
-          )
-        : new Worker(node.config.queueName, processor, workerOptions);
-      if (worker) {
-        node.resources.set(worker, connection);
-      }
-      return worker;
+      return createResource(
+        "worker",
+        owner,
+        node.getTelemetry(),
+        (workerOptions, factory) =>
+          new Worker(node.config.queueName, processor, workerOptions, factory),
+        options,
+      ).resource;
     };
 
     node.createQueueEvents = function createQueueEvents(owner = node) {
-      const isPostgres = node.config.backend === "postgres";
-      const connection = isPostgres
-        ? undefined
-        : node.createConnection("events", owner);
-      const queueEventsOptions = buildBullMQOptions(
-        node.config,
-        isPostgres ? node.config.postgres : connection,
+      // QueueEvents deliberately gets no telemetry instance; see docs/TELEMETRY.md.
+      return createResource(
+        "events",
+        owner,
         undefined,
-        "events"
-      );
-      const queueEvents = isPostgres
-        ? buildPostgresResource(
-            () =>
-              new QueueEvents(
-                node.config.queueName,
-                queueEventsOptions,
-                createPostgresBackend,
-              ),
-          )
-        : new QueueEvents(node.config.queueName, queueEventsOptions);
-      if (queueEvents) {
-        node.resources.set(queueEvents, connection);
-      }
-      return queueEvents;
+        (options, factory) =>
+          new QueueEvents(node.config.queueName, options, factory),
+      ).resource;
     };
 
     node.createFlowProducer = function createFlowProducer(owner = node) {
-      const isPostgres = node.config.backend === "postgres";
-      const connection = isPostgres
-        ? undefined
-        : node.createConnection("producer", owner);
-      const flowProducerOptions = buildBullMQOptions(
-        node.config,
-        isPostgres ? node.config.postgres : connection,
+      return createResource(
+        "producer",
+        owner,
         node.getTelemetry(),
-        "producer"
-      );
-      const flowProducer = isPostgres
-        ? buildPostgresResource(
-            () => new FlowProducer(flowProducerOptions, createPostgresBackend),
-          )
-        : new FlowProducer(flowProducerOptions);
-      if (flowProducer) {
-        node.resources.set(flowProducer, connection);
-      }
-      return flowProducer;
+        (options, factory) => new FlowProducer(options, factory),
+      ).resource;
     };
 
     node.on("close", async function onClose(removed, done) {
